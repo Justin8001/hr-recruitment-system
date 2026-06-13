@@ -26,13 +26,16 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
 
 const port = process.env.PORT ? Number(process.env.PORT) : 3001;
 
-// Apply any pending DB migrations, then start accepting requests
-import('./db/runMigrations.js')
-  .then(({ runMigrations }) => runMigrations())
+// Apply any pending DB migrations, seed the initial admin, then accept requests
+Promise.all([import('./db/runMigrations.js'), import('./db/bootstrapAdmin.js')])
+  .then(async ([{ runMigrations }, { bootstrapAdmin }]) => {
+    await runMigrations();
+    await bootstrapAdmin();
+  })
   .then(() => {
     app.listen(port, () => console.log(`Server listening on port ${port}`));
   })
   .catch((err) => {
-    console.error('Failed to run migrations on startup:', err);
+    console.error('Failed to start server:', err);
     process.exit(1);
   });
