@@ -4,6 +4,9 @@ import cors from 'cors';
 import authRoutes from './routes/auth.js';
 import candidateRoutes from './routes/candidates.js';
 import settingsRoutes from './routes/settings.js';
+import oauthRoutes from './routes/oauth.js';
+import connectionRoutes from './routes/connections.js';
+import scanRoutes from './routes/scan.js';
 
 const app = express();
 
@@ -18,6 +21,9 @@ app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 app.use('/api/auth', authRoutes);
 app.use('/api/candidates', candidateRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/oauth', oauthRoutes);
+app.use('/api/connections', connectionRoutes);
+app.use('/api/scan', scanRoutes);
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(err);

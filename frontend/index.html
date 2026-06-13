@@ -177,7 +177,7 @@
     <div class="sub">ניהול מועמדים, ראיונות וקריטריוני סינון</div>
   </div>
   <div class="toolbar">
-    <button class="btn" disabled title="יתווסף בשלב הבא — סריקת Outlook">🔍 סרוק מיילים (בקרוב)</button>
+    <button class="btn primary" id="btnScan" onclick="scanEmails()">🔍 סרוק מיילים</button>
     <button class="btn" disabled title="יתווסף בשלב הבא — סינון AI">🤖 סינון AI (בקרוב)</button>
     <button class="btn primary" onclick="openAddModal()">＋ הוסף מועמד</button>
     <span style="color:var(--muted);font-size:12px" id="whoami"></span>
@@ -209,8 +209,13 @@
     <button class="btn small" onclick="addCritRow('','')">＋ הוסף קריטריון</button>
   </div>
   <div class="panel">
-    <h3>הגדרות סריקת מייל <span style="font-weight:400;color:var(--muted);font-size:12px">(יופעל בשלב הבא)</span></h3>
-    <div class="hint">ההגדרות נשמרות כבר עכשיו; סריקת המייל בפועל (Outlook) תתווסף בשלב הבא.</div>
+    <h3>חיבורי מייל</h3>
+    <div class="hint">חבר את תיבת המייל שלך כדי לסרוק ממנה קורות חיים. ההתחברות מאובטחת (OAuth) — המערכת לא רואה את הסיסמה שלך, ואפשר לנתק בכל רגע.</div>
+    <div id="connList">טוען…</div>
+  </div>
+  <div class="panel">
+    <h3>הגדרות סריקת מייל</h3>
+    <div class="hint">מילות החיפוש וטווח הימים שלפיהם נסרקות התיבות המחוברות.</div>
     <div class="field">
       <label>מילות חיפוש במייל</label>
       <input type="text" id="setQuery" placeholder='קורות חיים, resume, CV, מועמדות'>
@@ -635,18 +640,98 @@ async function saveSettings() {
   }
 }
 
+/* ---------- Email connections & scanning ---------- */
+const PROVIDER_LABELS = { google: 'Gmail', microsoft: 'Outlook' };
+
+async function loadConnections() {
+  const wrap = document.getElementById('connList');
+  if (!wrap) return;
+  try {
+    const data = await api('/api/connections');
+    const connected = {};
+    (data.connections || []).forEach(c => { connected[c.provider] = c; });
+    const available = data.available || {};
+    const rows = Object.keys(PROVIDER_LABELS)
+      .filter(p => available[p])
+      .map(p => {
+        const label = PROVIDER_LABELS[p];
+        if (connected[p]) {
+          return `<div class="checkrow" style="justify-content:space-between;max-width:420px">
+            <span>✅ <b>${label}</b> מחובר${connected[p].account_email ? ' · ' + esc(connected[p].account_email) : ''}</span>
+            <button class="btn small" style="color:var(--red)" onclick="disconnectProvider('${p}')">נתק</button>
+          </div>`;
+        }
+        return `<div class="checkrow"><button class="btn" onclick="connectProvider('${p}')">🔗 התחבר ל-${label}</button></div>`;
+      });
+    wrap.innerHTML = rows.length
+      ? rows.join('')
+      : '<div class="hint">לא הוגדר אף ספק מייל בשרת. יש להגדיר את משתני ה-OAuth ב-Render.</div>';
+  } catch (err) {
+    wrap.innerHTML = '<div class="status-line err">שגיאה בטעינת חיבורים: ' + esc(err.message) + '</div>';
+  }
+}
+
+async function connectProvider(p) {
+  try {
+    const { url } = await api('/api/oauth/' + p + '/start');
+    window.location.href = url;
+  } catch (err) {
+    setStatus('שגיאה בהתחברות: ' + err.message, true);
+  }
+}
+
+async function disconnectProvider(p) {
+  if (!confirm('לנתק את ' + (PROVIDER_LABELS[p] || p) + '?')) return;
+  try {
+    await api('/api/connections/' + p, { method: 'DELETE' });
+    loadConnections();
+  } catch (err) {
+    setStatus('שגיאה בניתוק: ' + err.message, true);
+  }
+}
+
+async function scanEmails() {
+  const btn = document.getElementById('btnScan');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin">⏳</span> סורק...';
+  try {
+    const r = await api('/api/scan', { method: 'POST' });
+    await loadData();
+    let msg = r.added > 0 ? `נוספו ${r.added} מועמדים חדשים.` : 'לא נמצאו מועמדים חדשים.';
+    if (r.errors && r.errors.length) msg += ' שגיאות: ' + r.errors.join(' | ');
+    setStatus(msg, !!(r.errors && r.errors.length));
+  } catch (err) {
+    setStatus('שגיאה בסריקה: ' + err.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '🔍 סרוק מיילים';
+  }
+}
+
+// Show a one-time message after returning from an OAuth redirect, then clean the URL.
+function handleOAuthReturn() {
+  const params = new URLSearchParams(window.location.search);
+  const connected = params.get('connected');
+  const error = params.get('error');
+  if (connected) setStatus('✅ ' + (PROVIDER_LABELS[connected] || connected) + ' חובר בהצלחה.');
+  else if (error) setStatus('שגיאה בחיבור המייל: ' + error, true);
+  if (connected || error) {
+    window.history.replaceState({}, '', window.location.pathname);
+  }
+}
+
 /* ---------- Tabs ---------- */
 function switchTab(t) {
   document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
   document.querySelectorAll('.tabview').forEach(v => v.style.display = 'none');
   document.getElementById('tab-' + t).style.display = '';
-  if (t === 'settings') renderSettings();
+  if (t === 'settings') { renderSettings(); loadConnections(); }
 }
 
 /* ---------- Init ---------- */
 if (getToken()) {
   showApp();
-  loadData();
+  loadData().then(() => { loadConnections(); handleOAuthReturn(); });
 } else {
   showLogin();
 }

@@ -1,0 +1,142 @@
+import type { EmailProvider, ScanSettings, ScannedMessage, TokenSet } from './types.js';
+
+const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
+const TOKEN_URL = 'https://oauth2.googleapis.com/token';
+const SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
+
+function redirectUri() {
+  return `${process.env.OAUTH_REDIRECT_BASE}/api/oauth/google/callback`;
+}
+
+function isConfigured() {
+  return !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+}
+
+function authUrl(state: string) {
+  const p = new URLSearchParams({
+    client_id: process.env.GOOGLE_CLIENT_ID as string,
+    redirect_uri: redirectUri(),
+    response_type: 'code',
+    scope: SCOPE,
+    access_type: 'offline',
+    prompt: 'consent',
+    include_granted_scopes: 'true',
+    state
+  });
+  return `${AUTH_URL}?${p.toString()}`;
+}
+
+async function tokenRequest(body: Record<string, string>): Promise<any> {
+  const res = await fetch(TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams(body).toString()
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`Google token error: ${data.error_description || data.error || res.status}`);
+  return data;
+}
+
+async function getProfileEmail(accessToken: string): Promise<string | undefined> {
+  const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile', {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  if (!res.ok) return undefined;
+  const data = await res.json().catch(() => ({}));
+  return data.emailAddress;
+}
+
+function toTokenSet(data: any): TokenSet {
+  return {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token,
+    expiresAt: new Date(Date.now() + (data.expires_in ?? 3600) * 1000),
+    scopes: data.scope
+  };
+}
+
+async function exchangeCode(code: string): Promise<TokenSet> {
+  const data = await tokenRequest({
+    code,
+    client_id: process.env.GOOGLE_CLIENT_ID as string,
+    client_secret: process.env.GOOGLE_CLIENT_SECRET as string,
+    redirect_uri: redirectUri(),
+    grant_type: 'authorization_code'
+  });
+  const ts = toTokenSet(data);
+  ts.accountEmail = await getProfileEmail(ts.accessToken);
+  return ts;
+}
+
+async function refreshAccessToken(refreshToken: string): Promise<TokenSet> {
+  const data = await tokenRequest({
+    refresh_token: refreshToken,
+    client_id: process.env.GOOGLE_CLIENT_ID as string,
+    client_secret: process.env.GOOGLE_CLIENT_SECRET as string,
+    grant_type: 'refresh_token'
+  });
+  return toTokenSet(data);
+}
+
+// Parse a raw "Name <email>" From header (ported from the original artifact).
+function parseSender(s: string): { name: string; email: string } {
+  if (!s) return { name: '', email: '' };
+  const m = s.match(/^\s*"?([^"<]*)"?\s*<([^>]+)>/);
+  if (m) return { name: m[1].trim(), email: m[2].trim() };
+  if (s.includes('@')) {
+    const local = s.split('@')[0].replace(/[._-]+/g, ' ');
+    return { name: local, email: s.trim() };
+  }
+  return { name: s.trim(), email: '' };
+}
+
+function buildQuery(settings: ScanSettings): string {
+  const terms = settings.query.split(',').map((t) => t.trim()).filter(Boolean);
+  let q = '{' + terms.map((t) => `"${t}"`).join(' OR ') + '} newer_than:' + (settings.days || 60) + 'd';
+  if (settings.attachOnly) q += ' has:attachment';
+  if (settings.gmailTo) q += ' deliveredto:' + settings.gmailTo.trim();
+  return q;
+}
+
+async function searchMessages(accessToken: string, settings: ScanSettings): Promise<ScannedMessage[]> {
+  const auth = { Authorization: `Bearer ${accessToken}` };
+  const listUrl =
+    'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=50&q=' +
+    encodeURIComponent(buildQuery(settings));
+  const listRes = await fetch(listUrl, { headers: auth });
+  const listData = await listRes.json().catch(() => ({}));
+  if (!listRes.ok) throw new Error(`Gmail search error: ${listData.error?.message || listRes.status}`);
+
+  const messages: any[] = listData.messages || [];
+  const out: ScannedMessage[] = [];
+  for (const m of messages) {
+    const detUrl =
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}` +
+      '?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date';
+    const detRes = await fetch(detUrl, { headers: auth });
+    if (!detRes.ok) continue;
+    const det = await detRes.json().catch(() => ({}));
+    const headers: any[] = det.payload?.headers || [];
+    const getH = (n: string) => headers.find((h) => h.name?.toLowerCase() === n)?.value || '';
+    const snd = parseSender(getH('from'));
+    const dateRaw = getH('date');
+    out.push({
+      extKey: 'gmail:' + (det.threadId || m.id),
+      name: snd.name || snd.email || 'לא ידוע',
+      email: snd.email,
+      subject: getH('subject'),
+      snippet: det.snippet || '',
+      date: dateRaw ? new Date(dateRaw).toISOString() : '',
+      link: 'https://mail.google.com/mail/u/0/#all/' + (det.threadId || m.id)
+    });
+  }
+  return out;
+}
+
+export const google: EmailProvider = {
+  isConfigured,
+  authUrl,
+  exchangeCode,
+  refreshAccessToken,
+  searchMessages
+};
