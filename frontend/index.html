@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>מערכת גיוס מועמדים</title>
+<script src="config.js"></script>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f6f7f9;
+    --card: #ffffff;
+    --border: #e3e6ea;
+    --text: #1c2430;
+    --muted: #6b7685;
+    --accent: #2563eb;
+    --accent-soft: #eaf1fe;
+    --green: #16a34a;
+    --green-soft: #e8f7ee;
+    --red: #dc2626;
+    --red-soft: #fdecec;
+    --amber: #d97706;
+    --amber-soft: #fdf3e3;
+    --purple: #7c3aed;
+    --purple-soft: #f1eafe;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", "Heebo", Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 16px;
+    font-size: 14px;
+  }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 10px; margin-bottom: 14px;
+  }
+  header h1 { font-size: 20px; }
+  header .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .btn {
+    border: 1px solid var(--border); background: var(--card); color: var(--text);
+    padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 13px;
+    font-family: inherit; transition: background .15s;
+  }
+  .btn:hover { background: #f0f3f7; }
+  .btn:disabled { opacity: .55; cursor: not-allowed; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { background: #1d4fd7; }
+  .btn.primary:disabled { opacity: .6; cursor: wait; }
+  .btn.small { padding: 4px 9px; font-size: 12px; }
+  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 14px; border-bottom: 1px solid var(--border); }
+  .tab {
+    padding: 8px 16px; cursor: pointer; border: none; background: none;
+    font-family: inherit; font-size: 14px; color: var(--muted);
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+  .stats { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+  .stat {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 10px 16px; min-width: 110px;
+  }
+  .stat .num { font-size: 22px; font-weight: 700; }
+  .stat .lbl { font-size: 11px; color: var(--muted); }
+  /* Kanban */
+  .board { display: flex; gap: 10px; overflow-x: auto; align-items: flex-start; padding-bottom: 8px; }
+  .col {
+    background: #eef0f4; border-radius: var(--radius); min-width: 230px; width: 230px;
+    flex-shrink: 0; padding: 8px;
+  }
+  .col.dragover { outline: 2px dashed var(--accent); }
+  .col h3 {
+    font-size: 13px; padding: 4px 6px 8px; display: flex; justify-content: space-between;
+  }
+  .col h3 .count { color: var(--muted); font-weight: 400; }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px; margin-bottom: 8px; cursor: grab; position: relative;
+  }
+  .card.dragging { opacity: .5; }
+  .card .name { font-weight: 600; font-size: 13px; margin-bottom: 2px; }
+  .card .meta { color: var(--muted); font-size: 11px; margin-bottom: 6px; }
+  .card .snippet { font-size: 11px; color: #4a5462; max-height: 44px; overflow: hidden; margin-bottom: 6px; }
+  .badges { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
+  .badge { font-size: 10px; padding: 2px 7px; border-radius: 99px; font-weight: 600; }
+  .badge.gmail { background: var(--red-soft); color: var(--red); }
+  .badge.outlook { background: var(--accent-soft); color: var(--accent); }
+  .badge.manual { background: var(--purple-soft); color: var(--purple); }
+  .badge.score-hi { background: var(--green-soft); color: var(--green); }
+  .badge.score-mid { background: var(--amber-soft); color: var(--amber); }
+  .badge.score-lo { background: #eef0f4; color: var(--muted); }
+  .badge.crit { background: var(--accent-soft); color: var(--accent); font-weight: 400; }
+  .card .actions { display: flex; gap: 6px; }
+  .card .actions a, .card .actions button {
+    font-size: 11px; color: var(--accent); background: none; border: none;
+    cursor: pointer; text-decoration: none; font-family: inherit; padding: 0;
+  }
+  .card .actions .del { color: var(--red); }
+  /* Table */
+  table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: var(--radius); overflow: hidden; }
+  th, td { padding: 9px 12px; text-align: right; border-bottom: 1px solid var(--border); font-size: 13px; }
+  th { background: #eef0f4; font-size: 12px; color: var(--muted); }
+  tr:hover td { background: #fafbfc; }
+  select.stage {
+    font-family: inherit; font-size: 12px; padding: 3px 6px; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--card);
+  }
+  /* Settings */
+  .panel {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 16px; margin-bottom: 14px; max-width: 720px;
+  }
+  .panel h3 { font-size: 15px; margin-bottom: 4px; }
+  .panel .hint { color: var(--muted); font-size: 12px; margin-bottom: 12px; }
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+  .field input[type=text], .field input[type=password], .field input[type=number], .field textarea {
+    width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px;
+    font-family: inherit; font-size: 13px; background: #fff; color: var(--text);
+  }
+  .field textarea { resize: vertical; min-height: 56px; }
+  .crit-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: flex-start; }
+  .crit-row input:first-child { width: 170px; flex-shrink: 0; }
+  .crit-row input:nth-child(2) { flex: 1; }
+  .checkrow { display: flex; align-items: center; gap: 6px; font-size: 13px; margin-bottom: 8px; }
+  /* Modal */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(20,28,40,.45); display: none;
+    align-items: center; justify-content: center; z-index: 50; padding: 16px;
+  }
+  .overlay.show { display: flex; }
+  .modal {
+    background: var(--card); border-radius: 12px; padding: 20px; width: 100%;
+    max-width: 520px; max-height: 85vh; overflow-y: auto;
+  }
+  .modal h3 { margin-bottom: 12px; font-size: 16px; }
+  .modal .row { display: flex; gap: 8px; justify-content: flex-start; margin-top: 14px; }
+  .status-line { font-size: 12px; color: var(--muted); min-height: 18px; margin-bottom: 10px; }
+  .status-line.err { color: var(--red); }
+  .empty { text-align: center; color: var(--muted); padding: 40px 0; font-size: 13px; }
+  .spin { display: inline-block; animation: rot 1s linear infinite; }
+  @keyframes rot { to { transform: rotate(360deg); } }
+  /* Login */
+  #loginScreen {
+    position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+    background: var(--bg); padding: 16px; z-index: 100;
+  }
+  #loginScreen .modal { max-width: 360px; }
+  #loginScreen h2 { font-size: 20px; margin-bottom: 4px; }
+  #loginScreen .hint { color: var(--muted); font-size: 12px; margin-bottom: 16px; }
+  #loginMsg { color: var(--red); font-size: 12px; min-height: 16px; margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<!-- ===== Login screen ===== -->
+<div id="loginScreen">
+  <form class="modal" onsubmit="doLogin(event)">
+    <h2>📋 מערכת גיוס מועמדים</h2>
+    <div class="hint">התחברות למערכת</div>
+    <div class="field"><label>שם משתמש</label><input type="text" id="loginUser" autocomplete="username"></div>
+    <div class="field"><label>סיסמה</label><input type="password" id="loginPass" autocomplete="current-password"></div>
+    <button class="btn primary" type="submit" style="width:100%">התחבר</button>
+    <div id="loginMsg"></div>
+  </form>
+</div>
+
+<!-- ===== Main app ===== -->
+<div id="app" style="display:none">
+
+<header>
+  <div>
+    <h1>📋 מערכת גיוס מועמדים</h1>
+    <div class="sub">ניהול מועמדים, ראיונות וקריטריוני סינון</div>
+  </div>
+  <div class="toolbar">
+    <button class="btn" disabled title="יתווסף בשלב הבא — סריקת Outlook">🔍 סרוק מיילים (בקרוב)</button>
+    <button class="btn" disabled title="יתווסף בשלב הבא — סינון AI">🤖 סינון AI (בקרוב)</button>
+    <button class="btn primary" onclick="openAddModal()">＋ הוסף מועמד</button>
+    <span style="color:var(--muted);font-size:12px" id="whoami"></span>
+    <button class="btn small" onclick="logout()">יציאה</button>
+  </div>
+</header>
+
+<div class="status-line" id="statusLine"></div>
+
+<div class="stats" id="statsBar"></div>
+
+<div class="tabs">
+  <button class="tab active" data-tab="board" onclick="switchTab('board')">לוח מועמדים</button>
+  <button class="tab" data-tab="list" onclick="switchTab('list')">רשימה</button>
+  <button class="tab" data-tab="settings" onclick="switchTab('settings')">הגדרות וקריטריונים</button>
+</div>
+
+<div id="tab-board" class="tabview"><div class="board" id="board"></div></div>
+
+<div id="tab-list" class="tabview" style="display:none">
+  <div id="listWrap"></div>
+</div>
+
+<div id="tab-settings" class="tabview" style="display:none">
+  <div class="panel">
+    <h3>קריטריוני סינון</h3>
+    <div class="hint">כל קריטריון מכיל מילות מפתח (מופרדות בפסיק). מועמד מקבל נקודה על כל קריטריון שמילותיו מופיעות בנושא, בתקציר או בהערות.</div>
+    <div id="critList"></div>
+    <button class="btn small" onclick="addCritRow('','')">＋ הוסף קריטריון</button>
+  </div>
+  <div class="panel">
+    <h3>הגדרות סריקת מייל <span style="font-weight:400;color:var(--muted);font-size:12px">(יופעל בשלב הבא)</span></h3>
+    <div class="hint">ההגדרות נשמרות כבר עכשיו; סריקת המייל בפועל (Outlook) תתווסף בשלב הבא.</div>
+    <div class="field">
+      <label>מילות חיפוש במייל</label>
+      <input type="text" id="setQuery" placeholder='קורות חיים, resume, CV, מועמדות'>
+    </div>
+    <div class="field">
+      <label>כמה ימים אחורה לסרוק</label>
+      <input type="number" id="setDays" min="1" max="365" style="width:120px">
+    </div>
+    <div class="checkrow"><input type="checkbox" id="setGmail"> <label for="setGmail" style="font-weight:400">סרוק Gmail</label></div>
+    <div class="checkrow"><input type="checkbox" id="setOutlook"> <label for="setOutlook" style="font-weight:400">סרוק Outlook</label></div>
+    <div class="field">
+      <label>תיבת Outlook לסריקה (תיבה משותפת / מחלקת HR)</label>
+      <input type="text" id="setOutlookMailbox" placeholder="hr@company.co.il" dir="ltr" style="text-align:left">
+    </div>
+    <div class="field">
+      <label>כתובת יעד ב-Gmail (אופציונלי)</label>
+      <input type="text" id="setGmailTo" placeholder="hr@company.com" dir="ltr" style="text-align:left">
+    </div>
+    <div class="checkrow"><input type="checkbox" id="setAttach"> <label for="setAttach" style="font-weight:400">רק מיילים עם קובץ מצורף (Gmail)</label></div>
+    <button class="btn primary" onclick="saveSettings()">שמור הגדרות</button>
+    <span id="saveMsg" style="color:var(--green); font-size:12px; margin-inline-start:8px"></span>
+  </div>
+  <div class="panel">
+    <h3>ניקוי נתונים</h3>
+    <div class="hint">מחיקת כל המועמדים השמורים (ההגדרות נשמרות).</div>
+    <button class="btn" style="color:var(--red)" onclick="clearAll()">🗑 מחק את כל המועמדים</button>
+  </div>
+</div>
+
+<!-- candidate modal -->
+<div class="overlay" id="candModal">
+  <div class="modal">
+    <h3 id="modalTitle">מועמד</h3>
+    <div class="field"><label>שם</label><input type="text" id="mName"></div>
+    <div class="field"><label>אימייל</label><input type="text" id="mEmail"></div>
+    <div class="field"><label>תפקיד / משרה</label><input type="text" id="mRole"></div>
+    <div class="field"><label>שלב</label>
+      <select class="stage" id="mStage" style="width:100%; padding:7px"></select>
+    </div>
+    <div class="field"><label>הערות</label><textarea id="mNotes"></textarea></div>
+    <div class="row">
+      <button class="btn primary" onclick="saveModal()">שמור</button>
+      <button class="btn" onclick="closeModal()">ביטול</button>
+    </div>
+  </div>
+</div>
+
+</div><!-- /#app -->
+
+<script>
+const STAGES = [
+  { id: 'new',       label: '📥 התקבל' },
+  { id: 'screen',    label: '🔎 סינון' },
+  { id: 'phone',     label: '📞 ראיון טלפוני' },
+  { id: 'interview', label: '💼 ראיון מקצועי' },
+  { id: 'offer',     label: '📄 הצעה' },
+  { id: 'hired',     label: '✅ התקבל לעבודה' },
+  { id: 'rejected',  label: '❌ נדחה' },
+];
+
+const DEFAULT_SETTINGS = {
+  query: 'קורות חיים, קו"ח, resume, CV, מועמדות, מועמד למשרת',
+  days: 60,
+  gmail: false,
+  outlook: true,
+  attachOnly: false,
+  outlookMailbox: '',
+  gmailTo: '',
+  criteria: [
+    { name: 'ניסיון בתחום', keywords: 'ניסיון, שנות ניסיון, experience' },
+    { name: 'השכלה / הסמכות', keywords: 'תואר, הסמכה, תעודה, הנדסאי, מהנדס, B.A, B.Sc' },
+    { name: 'מילות מפתח לתפקיד', keywords: '' },
+    { name: 'מיקום / זמינות', keywords: 'זמין מיידית, זמינות מיידית, מגורים, אזור' },
+  ],
+};
+
+let candidates = [];
+let settings = Object.assign({}, DEFAULT_SETTINGS);
+let editingId = null;
+
+/* ---------- API + auth ---------- */
+const API_BASE = window.API_BASE || 'http://localhost:3001';
+
+function getToken() { return localStorage.getItem('hr_token'); }
+function setToken(t) { t ? localStorage.setItem('hr_token', t) : localStorage.removeItem('hr_token'); }
+function getUser() { try { return JSON.parse(localStorage.getItem('hr_user')); } catch { return null; } }
+function setUser(u) { u ? localStorage.setItem('hr_user', JSON.stringify(u)) : localStorage.removeItem('hr_user'); }
+
+async function api(path, options = {}) {
+  const token = getToken();
+  const res = await fetch(API_BASE + path, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: 'Bearer ' + token } : {}),
+      ...(options.headers || {}),
+    },
+  });
+  if (res.status === 401 && !path.startsWith('/api/auth/login')) {
+    logout();
+    throw new Error('פג תוקף החיבור — יש להתחבר מחדש');
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || ('שגיאה ' + res.status));
+  }
+  if (res.status === 204 || res.headers.get('content-length') === '0') return undefined;
+  const text = await res.text();
+  return text ? JSON.parse(text) : undefined;
+}
+
+function showLogin() {
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+}
+function showApp() {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('app').style.display = '';
+  const u = getUser();
+  document.getElementById('whoami').textContent = u ? '👤 ' + u.username : '';
+}
+
+async function doLogin(e) {
+  if (e) e.preventDefault();
+  const username = document.getElementById('loginUser').value.trim();
+  const password = document.getElementById('loginPass').value;
+  const msg = document.getElementById('loginMsg');
+  msg.textContent = '';
+  if (!username || !password) { msg.textContent = 'נא להזין שם משתמש וסיסמה'; return; }
+  try {
+    const data = await api('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) });
+    setToken(data.token);
+    setUser(data.user);
+    showApp();
+    await loadData();
+  } catch (err) {
+    msg.textContent = err.message;
+  }
+}
+
+function logout() {
+  setToken(null);
+  setUser(null);
+  document.getElementById('loginPass').value = '';
+  showLogin();
+}
+
+function setStatus(msg, isErr) {
+  const el = document.getElementById('statusLine');
+  el.textContent = msg || '';
+  el.className = 'status-line' + (isErr ? ' err' : '');
+}
+
+/* ---------- Data loading ---------- */
+async function loadData() {
+  setStatus('טוען נתונים...');
+  try {
+    const [cands, sett] = await Promise.all([api('/api/candidates'), api('/api/settings')]);
+    candidates = cands || [];
+    settings = Object.assign({}, DEFAULT_SETTINGS, sett || {});
+    scoreAll();
+    renderAll();
+    renderSettings();
+    setStatus('');
+  } catch (err) {
+    setStatus('שגיאה בטעינה: ' + err.message, true);
+  }
+}
+
+/* ---------- Scoring (client-side, derived from criteria + text) ---------- */
+function scoreAll() {
+  const crits = (settings.criteria || []).filter(c => c.keywords && c.keywords.trim());
+  for (const c of candidates) {
+    const text = ((c.subject || '') + ' ' + (c.snippet || '') + ' ' + (c.notes || '')).toLowerCase();
+    c.matched = [];
+    for (const cr of crits) {
+      const kws = cr.keywords.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+      if (kws.some(k => text.includes(k))) c.matched.push(cr.name);
+    }
+    c.score = c.matched.length;
+  }
+}
+
+/* ---------- Rendering ---------- */
+function renderAll() { renderStats(); renderBoard(); renderList(); }
+
+function renderStats() {
+  const el = document.getElementById('statsBar');
+  const active = candidates.filter(c => !['hired', 'rejected'].includes(c.stage)).length;
+  const interviews = candidates.filter(c => ['phone', 'interview'].includes(c.stage)).length;
+  const hired = candidates.filter(c => c.stage === 'hired').length;
+  el.innerHTML = `
+    <div class="stat"><div class="num">${candidates.length}</div><div class="lbl">סה"כ מועמדים</div></div>
+    <div class="stat"><div class="num">${active}</div><div class="lbl">בתהליך פעיל</div></div>
+    <div class="stat"><div class="num">${interviews}</div><div class="lbl">בשלבי ראיונות</div></div>
+    <div class="stat"><div class="num">${hired}</div><div class="lbl">התקבלו</div></div>`;
+}
+
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+function scoreBadge(c) {
+  const max = (settings.criteria || []).filter(x => x.keywords && x.keywords.trim()).length || 1;
+  const cls = c.score >= Math.ceil(max * 0.6) ? 'score-hi' : c.score > 0 ? 'score-mid' : 'score-lo';
+  let aiTag = '';
+  if (c.ai && c.ai.relevant !== undefined) aiTag = c.ai.relevant ? ` · AI ${c.ai.fit}/3` : ' · AI ✗';
+  return `<span class="badge ${cls}">התאמה ${c.score}/${max}${aiTag}</span>`;
+}
+
+function cardHTML(c) {
+  const src = c.source === 'gmail' ? '<span class="badge gmail">Gmail</span>'
+            : c.source === 'outlook' ? '<span class="badge outlook">Outlook</span>'
+            : '<span class="badge manual">ידני</span>';
+  const crits = (c.matched || []).map(m => `<span class="badge crit">${esc(m)}</span>`).join('');
+  const dateStr = c.date ? new Date(c.date).toLocaleDateString('he-IL') : '';
+  return `<div class="card" draggable="true" data-id="${c.id}">
+    <div class="name">${esc(c.name)}</div>
+    <div class="meta">${esc(c.email)}${dateStr ? ' · ' + dateStr : ''}${c.role ? ' · ' + esc(c.role) : ''}</div>
+    <div class="badges">${src}${scoreBadge(c)}${crits}</div>
+    ${c.subject ? `<div class="snippet"><b>${esc(c.subject)}</b> — ${esc(c.snippet)}</div>` : ''}
+    <div class="actions">
+      <button onclick="openEditModal('${c.id}')">✏️ ערוך</button>
+      ${c.link ? `<a href="${esc(c.link)}" target="_blank">📧 פתח מייל</a>` : ''}
+      <button class="del" onclick="delCand('${c.id}')">מחק</button>
+    </div>
+  </div>`;
+}
+
+function renderBoard() {
+  const board = document.getElementById('board');
+  board.innerHTML = STAGES.map(st => {
+    const items = candidates.filter(c => c.stage === st.id)
+      .sort((a, b) => (b.score - a.score) || String(b.date).localeCompare(String(a.date)));
+    return `<div class="col" data-stage="${st.id}">
+      <h3>${st.label} <span class="count">${items.length}</span></h3>
+      ${items.map(cardHTML).join('') || ''}
+    </div>`;
+  }).join('');
+  attachDnD();
+}
+
+function renderList() {
+  const wrap = document.getElementById('listWrap');
+  if (!candidates.length) { wrap.innerHTML = '<div class="empty">אין מועמדים עדיין. לחץ "הוסף מועמד" כדי להתחיל.</div>'; return; }
+  const opts = id => STAGES.map(s => `<option value="${s.id}" ${s.id === id ? 'selected' : ''}>${s.label}</option>`).join('');
+  const rows = [...candidates]
+    .sort((a, b) => (b.score - a.score) || String(b.date).localeCompare(String(a.date)))
+    .map(c => `<tr>
+      <td><b>${esc(c.name)}</b><br><span style="color:var(--muted);font-size:11px">${esc(c.email)}</span></td>
+      <td>${esc(c.subject)}</td>
+      <td>${c.source === 'gmail' ? 'Gmail' : c.source === 'outlook' ? 'Outlook' : 'ידני'}</td>
+      <td>${c.date ? new Date(c.date).toLocaleDateString('he-IL') : ''}</td>
+      <td>${scoreBadge(c)}</td>
+      <td><select class="stage" onchange="setStage('${c.id}', this.value)">${opts(c.stage)}</select></td>
+      <td>${c.link ? `<a href="${esc(c.link)}" target="_blank">📧</a>` : ''}
+          <button class="btn small" onclick="openEditModal('${c.id}')">✏️</button></td>
+    </tr>`).join('');
+  wrap.innerHTML = `<table><thead><tr>
+    <th>מועמד</th><th>נושא</th><th>מקור</th><th>תאריך</th><th>התאמה</th><th>שלב</th><th></th>
+  </tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+/* ---------- Drag & drop ---------- */
+function attachDnD() {
+  document.querySelectorAll('.card[draggable]').forEach(el => {
+    el.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('text/plain', el.dataset.id);
+      el.classList.add('dragging');
+    });
+    el.addEventListener('dragend', () => el.classList.remove('dragging'));
+  });
+  document.querySelectorAll('.col').forEach(col => {
+    col.addEventListener('dragover', e => { e.preventDefault(); col.classList.add('dragover'); });
+    col.addEventListener('dragleave', () => col.classList.remove('dragover'));
+    col.addEventListener('drop', e => {
+      e.preventDefault(); col.classList.remove('dragover');
+      setStage(e.dataTransfer.getData('text/plain'), col.dataset.stage);
+    });
+  });
+}
+
+async function setStage(id, stage) {
+  const c = candidates.find(x => x.id === id);
+  if (!c || c.stage === stage) return;
+  const prev = c.stage;
+  c.stage = stage;
+  renderAll(); // optimistic
+  try {
+    await api('/api/candidates/' + id, { method: 'PATCH', body: JSON.stringify({ stage }) });
+  } catch (err) {
+    c.stage = prev;
+    renderAll();
+    setStatus('שגיאה בעדכון שלב: ' + err.message, true);
+  }
+}
+
+async function delCand(id) {
+  if (!confirm('למחוק את המועמד?')) return;
+  try {
+    await api('/api/candidates/' + id, { method: 'DELETE' });
+    candidates = candidates.filter(c => c.id !== id);
+    renderAll();
+  } catch (err) {
+    setStatus('שגיאה במחיקה: ' + err.message, true);
+  }
+}
+
+async function clearAll() {
+  if (!confirm('למחוק את כל המועמדים? פעולה זו אינה הפיכה.')) return;
+  try {
+    await api('/api/candidates', { method: 'DELETE' });
+    candidates = [];
+    renderAll();
+  } catch (err) {
+    setStatus('שגיאה: ' + err.message, true);
+  }
+}
+
+/* ---------- Modal ---------- */
+function fillStageSelect() {
+  document.getElementById('mStage').innerHTML =
+    STAGES.map(s => `<option value="${s.id}">${s.label}</option>`).join('');
+}
+function openAddModal() {
+  editingId = null;
+  fillStageSelect();
+  document.getElementById('modalTitle').textContent = 'הוספת מועמד';
+  ['mName','mEmail','mRole','mNotes'].forEach(i => document.getElementById(i).value = '');
+  document.getElementById('mStage').value = 'new';
+  document.getElementById('candModal').classList.add('show');
+}
+function openEditModal(id) {
+  const c = candidates.find(x => x.id === id);
+  if (!c) return;
+  editingId = id;
+  fillStageSelect();
+  document.getElementById('modalTitle').textContent = 'עריכת מועמד';
+  document.getElementById('mName').value = c.name;
+  document.getElementById('mEmail').value = c.email;
+  document.getElementById('mRole').value = c.role || '';
+  document.getElementById('mStage').value = c.stage;
+  document.getElementById('mNotes').value = c.notes || '';
+  document.getElementById('candModal').classList.add('show');
+}
+function closeModal() { document.getElementById('candModal').classList.remove('show'); }
+
+async function saveModal() {
+  const v = id => document.getElementById(id).value.trim();
+  const stage = document.getElementById('mStage').value;
+  const notes = document.getElementById('mNotes').value;
+  try {
+    if (editingId) {
+      const updated = await api('/api/candidates/' + editingId, {
+        method: 'PATCH',
+        body: JSON.stringify({ name: v('mName'), email: v('mEmail'), role: v('mRole'), stage, notes }),
+      });
+      const i = candidates.findIndex(x => x.id === editingId);
+      if (i >= 0) candidates[i] = updated;
+    } else {
+      if (!v('mName')) { alert('נא להזין שם'); return; }
+      const created = await api('/api/candidates', {
+        method: 'POST',
+        body: JSON.stringify({ name: v('mName'), email: v('mEmail'), role: v('mRole'), stage, notes }),
+      });
+      candidates.push(created);
+    }
+    scoreAll();
+    closeModal();
+    renderAll();
+  } catch (err) {
+    setStatus('שגיאה בשמירה: ' + err.message, true);
+  }
+}
+
+document.getElementById('candModal').addEventListener('click', e => {
+  if (e.target.id === 'candModal') closeModal();
+});
+
+/* ---------- Settings ---------- */
+function addCritRow(name, kw) {
+  const div = document.createElement('div');
+  div.className = 'crit-row';
+  div.innerHTML = `<input type="text" placeholder="שם הקריטריון" value="${esc(name)}">
+    <input type="text" placeholder="מילות מפתח, מופרדות בפסיק" value="${esc(kw)}">
+    <button class="btn small" onclick="this.parentElement.remove()">✕</button>`;
+  document.getElementById('critList').appendChild(div);
+}
+function renderSettings() {
+  document.getElementById('setQuery').value = settings.query;
+  document.getElementById('setDays').value = settings.days;
+  document.getElementById('setGmail').checked = settings.gmail;
+  document.getElementById('setOutlook').checked = settings.outlook;
+  document.getElementById('setAttach').checked = settings.attachOnly;
+  document.getElementById('setOutlookMailbox').value = settings.outlookMailbox || '';
+  document.getElementById('setGmailTo').value = settings.gmailTo || '';
+  document.getElementById('critList').innerHTML = '';
+  (settings.criteria || []).forEach(c => addCritRow(c.name, c.keywords));
+}
+async function saveSettings() {
+  const newSettings = {
+    query: document.getElementById('setQuery').value.trim() || DEFAULT_SETTINGS.query,
+    days: parseInt(document.getElementById('setDays').value) || 60,
+    gmail: document.getElementById('setGmail').checked,
+    outlook: document.getElementById('setOutlook').checked,
+    attachOnly: document.getElementById('setAttach').checked,
+    outlookMailbox: document.getElementById('setOutlookMailbox').value.trim(),
+    gmailTo: document.getElementById('setGmailTo').value.trim(),
+    criteria: [...document.querySelectorAll('.crit-row')].map(r => {
+      const ins = r.querySelectorAll('input');
+      return { name: ins[0].value.trim(), keywords: ins[1].value.trim() };
+    }).filter(c => c.name),
+  };
+  try {
+    const saved = await api('/api/settings', { method: 'PUT', body: JSON.stringify(newSettings) });
+    settings = Object.assign({}, DEFAULT_SETTINGS, saved);
+    scoreAll();
+    renderAll();
+    const m = document.getElementById('saveMsg');
+    m.textContent = '✓ נשמר';
+    setTimeout(() => m.textContent = '', 2000);
+  } catch (err) {
+    setStatus('שגיאה בשמירת הגדרות: ' + err.message, true);
+  }
+}
+
+/* ---------- Tabs ---------- */
+function switchTab(t) {
+  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
+  document.querySelectorAll('.tabview').forEach(v => v.style.display = 'none');
+  document.getElementById('tab-' + t).style.display = '';
+  if (t === 'settings') renderSettings();
+}
+
+/* ---------- Init ---------- */
+if (getToken()) {
+  showApp();
+  loadData();
+} else {
+  showLogin();
+}
+</script>
+</body>
+</html>
