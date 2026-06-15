@@ -85,7 +85,7 @@ async function refreshAccessToken(refreshToken: string): Promise<TokenSet> {
 
 async function searchMessages(accessToken: string, settings: ScanSettings): Promise<ScannedMessage[]> {
   const terms = settings.query.split(',').map((t) => t.trim()).filter(Boolean);
-  const search = terms.map((t) => `\\"${t}\\"`).join(' OR ');
+  const search = terms.map((t) => `\\"${t.replace(/"/g, '')}\\"`).join(' OR ');
   const after = new Date(Date.now() - (settings.days || 60) * 864e5);
 
   const url =
