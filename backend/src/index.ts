@@ -3,6 +3,8 @@ import express from 'express';
 import cors from 'cors';
 import authRoutes from './routes/auth.js';
 import candidateRoutes from './routes/candidates.js';
+import clientRoutes from './routes/clients.js';
+import jobRoutes from './routes/jobs.js';
 import settingsRoutes from './routes/settings.js';
 import oauthRoutes from './routes/oauth.js';
 import connectionRoutes from './routes/connections.js';
@@ -20,6 +22,8 @@ app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/candidates', candidateRoutes);
+app.use('/api/clients', clientRoutes);
+app.use('/api/jobs', jobRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/oauth', oauthRoutes);
 app.use('/api/connections', connectionRoutes);

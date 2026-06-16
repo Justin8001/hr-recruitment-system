@@ -93,6 +93,7 @@
   .badge.score-mid { background: var(--amber-soft); color: var(--amber); }
   .badge.score-lo { background: #eef0f4; color: var(--muted); }
   .badge.crit { background: var(--accent-soft); color: var(--accent); font-weight: 400; }
+  .badge.job { background: var(--purple-soft); color: var(--purple); }
   .card .actions { display: flex; gap: 6px; }
   .card .actions a, .card .actions button {
     font-size: 11px; color: var(--accent); background: none; border: none;
@@ -192,6 +193,8 @@
 <div class="tabs">
   <button class="tab active" data-tab="board" onclick="switchTab('board')">לוח מועמדים</button>
   <button class="tab" data-tab="list" onclick="switchTab('list')">רשימה</button>
+  <button class="tab" data-tab="jobs" onclick="switchTab('jobs')">משרות</button>
+  <button class="tab" data-tab="clients" onclick="switchTab('clients')">לקוחות</button>
   <button class="tab" data-tab="settings" onclick="switchTab('settings')">הגדרות וקריטריונים</button>
 </div>
 
@@ -199,6 +202,57 @@
 
 <div id="tab-list" class="tabview" style="display:none">
   <div id="listWrap"></div>
+</div>
+
+<div id="tab-jobs" class="tabview" style="display:none">
+  <div class="panel">
+    <h3 id="jobFormTitle">הקמת משרה חדשה</h3>
+    <div class="hint">מספר המשרה נוצר אוטומטית בעת השמירה.</div>
+    <div class="field"><label>כותרת המשרה *</label><input type="text" id="jTitle"></div>
+    <div class="field"><label>לקוח</label>
+      <select id="jClient" style="width:100%; padding:7px"></select>
+    </div>
+    <div class="field"><label>מסלול</label>
+      <select id="jTrack" style="width:100%; padding:7px">
+        <option value="">— ללא —</option>
+        <option value="office">משרדי / תפעולי</option>
+        <option value="multi">רב-תחומי</option>
+        <option value="project">פרויקטים</option>
+      </select>
+    </div>
+    <div class="field"><label>סטטוס</label>
+      <select id="jStatus" style="width:100%; padding:7px">
+        <option value="open">פתוחה</option>
+        <option value="closed">סגורה</option>
+      </select>
+    </div>
+    <div class="field"><label>מילות מפתח להתאמה (יישמש לניקוד בהמשך)</label><input type="text" id="jKeywords" placeholder="מופרדות בפסיק"></div>
+    <div class="field"><label>תיאור</label><textarea id="jDescription"></textarea></div>
+    <div class="row">
+      <button class="btn primary" onclick="saveJob()">שמור משרה</button>
+      <button class="btn" id="jCancelBtn" onclick="resetJobForm()" style="display:none">ביטול עריכה</button>
+      <span id="jobMsg" style="color:var(--green); font-size:12px; margin-inline-start:8px"></span>
+    </div>
+  </div>
+  <div id="jobsWrap"></div>
+</div>
+
+<div id="tab-clients" class="tabview" style="display:none">
+  <div class="panel">
+    <h3 id="clientFormTitle">הוספת לקוח</h3>
+    <div class="field"><label>שם הלקוח *</label><input type="text" id="clName"></div>
+    <div class="field"><label>איש קשר</label><input type="text" id="clContactName"></div>
+    <div class="field"><label>אימייל איש קשר</label><input type="text" id="clContactEmail" dir="ltr" style="text-align:left"></div>
+    <div class="field"><label>טלפון איש קשר</label><input type="text" id="clContactPhone" dir="ltr" style="text-align:left"></div>
+    <div class="field"><label>את מי הלקוח מחפש? (סוגי משרות / פרופיל)</label><textarea id="clLookingFor"></textarea></div>
+    <div class="field"><label>הערות</label><textarea id="clNotes"></textarea></div>
+    <div class="row">
+      <button class="btn primary" onclick="saveClient()">שמור לקוח</button>
+      <button class="btn" id="clCancelBtn" onclick="resetClientForm()" style="display:none">ביטול עריכה</button>
+      <span id="clientMsg" style="color:var(--green); font-size:12px; margin-inline-start:8px"></span>
+    </div>
+  </div>
+  <div id="clientsWrap"></div>
 </div>
 
 <div id="tab-settings" class="tabview" style="display:none">
@@ -250,10 +304,25 @@
   <div class="modal">
     <h3 id="modalTitle">מועמד</h3>
     <div class="field"><label>שם</label><input type="text" id="mName"></div>
-    <div class="field"><label>אימייל</label><input type="text" id="mEmail"></div>
-    <div class="field"><label>תפקיד / משרה</label><input type="text" id="mRole"></div>
+    <div class="field"><label>אימייל</label><input type="text" id="mEmail" dir="ltr" style="text-align:left"></div>
+    <div class="field"><label>טלפון</label><input type="text" id="mPhone" dir="ltr" style="text-align:left"></div>
+    <div class="field"><label>משרה</label>
+      <select id="mJob" style="width:100%; padding:7px"></select>
+    </div>
+    <div class="field"><label>תפקיד (טקסט חופשי, אם אין משרה משויכת)</label><input type="text" id="mRole"></div>
+    <div class="field"><label>מקור / הפניה (חבר מביא חבר)</label><input type="text" id="mReferral"></div>
     <div class="field"><label>שלב</label>
-      <select class="stage" id="mStage" style="width:100%; padding:7px"></select>
+      <select class="stage" id="mStage" style="width:100%; padding:7px" onchange="toggleRejectFields()"></select>
+    </div>
+    <div id="mRejectBox" style="display:none">
+      <div class="field"><label>סיבת פסילה</label><input type="text" id="mRejectReason" placeholder="לדוגמה: ציפיות שכר, חוסר ניסיון"></div>
+      <div class="field"><label>נפסל על ידי</label>
+        <select id="mRejectedBy" style="width:100%; padding:7px">
+          <option value="">— לא צוין —</option>
+          <option value="us">אנחנו (פסילה פנימית)</option>
+          <option value="client">הלקוח</option>
+        </select>
+      </div>
     </div>
     <div class="field"><label>הערות</label><textarea id="mNotes"></textarea></div>
     <div class="row">
@@ -293,8 +362,12 @@ const DEFAULT_SETTINGS = {
 };
 
 let candidates = [];
+let jobs = [];
+let clients = [];
 let settings = Object.assign({}, DEFAULT_SETTINGS);
 let editingId = null;
+let editingJobId = null;
+let editingClientId = null;
 
 /* ---------- API + auth ---------- */
 const API_BASE = window.API_BASE || 'http://localhost:3001';
@@ -373,11 +446,17 @@ function setStatus(msg, isErr) {
 async function loadData() {
   setStatus('טוען נתונים...');
   try {
-    const [cands, sett] = await Promise.all([api('/api/candidates'), api('/api/settings')]);
+    const [cands, sett, jbs, clts] = await Promise.all([
+      api('/api/candidates'), api('/api/settings'), api('/api/jobs'), api('/api/clients')
+    ]);
     candidates = cands || [];
+    jobs = jbs || [];
+    clients = clts || [];
     settings = Object.assign({}, DEFAULT_SETTINGS, sett || {});
     scoreAll();
     renderAll();
+    renderJobs();
+    renderClients();
     renderSettings();
     setStatus('');
   } catch (err) {
@@ -429,11 +508,16 @@ function cardHTML(c) {
             : c.source === 'outlook' ? '<span class="badge outlook">Outlook</span>'
             : '<span class="badge manual">ידני</span>';
   const crits = (c.matched || []).map(m => `<span class="badge crit">${esc(m)}</span>`).join('');
+  const jobBadge = c.jobNumber
+    ? `<span class="badge job">#${esc(c.jobNumber)} ${esc(c.jobTitle)}</span>` : '';
   const dateStr = c.date ? new Date(c.date).toLocaleDateString('he-IL') : '';
+  const rejectNote = (c.stage === 'rejected' && (c.rejectionReason || c.rejectedBy))
+    ? `<div class="snippet" style="color:var(--red)">⛔ ${esc(c.rejectionReason || '')}${c.rejectedBy ? ' · ' + (c.rejectedBy === 'client' ? 'נפסל ע"י הלקוח' : 'פסילה פנימית') : ''}</div>` : '';
   return `<div class="card" draggable="true" data-id="${c.id}">
     <div class="name">${esc(c.name)}</div>
-    <div class="meta">${esc(c.email)}${dateStr ? ' · ' + dateStr : ''}${c.role ? ' · ' + esc(c.role) : ''}</div>
-    <div class="badges">${src}${scoreBadge(c)}${crits}</div>
+    <div class="meta">${esc(c.email)}${c.phone ? ' · ' + esc(c.phone) : ''}${dateStr ? ' · ' + dateStr : ''}${!c.jobNumber && c.role ? ' · ' + esc(c.role) : ''}</div>
+    <div class="badges">${src}${jobBadge}${scoreBadge(c)}${crits}</div>
+    ${rejectNote}
     ${c.subject ? `<div class="snippet"><b>${esc(c.subject)}</b> — ${esc(c.snippet)}</div>` : ''}
     <div class="actions">
       <button onclick="openEditModal('${c.id}')">✏️ ערוך</button>
@@ -538,12 +622,25 @@ function fillStageSelect() {
   document.getElementById('mStage').innerHTML =
     STAGES.map(s => `<option value="${s.id}">${s.label}</option>`).join('');
 }
+function fillJobSelect(selectedId) {
+  const open = jobs.filter(j => j.status === 'open' || j.id === selectedId);
+  document.getElementById('mJob').innerHTML =
+    '<option value="">— ללא משרה —</option>' +
+    open.map(j => `<option value="${j.id}" ${j.id === selectedId ? 'selected' : ''}>#${esc(j.jobNumber)} ${esc(j.title)}${j.clientName ? ' · ' + esc(j.clientName) : ''}</option>`).join('');
+}
+function toggleRejectFields() {
+  const show = document.getElementById('mStage').value === 'rejected';
+  document.getElementById('mRejectBox').style.display = show ? '' : 'none';
+}
 function openAddModal() {
   editingId = null;
   fillStageSelect();
+  fillJobSelect('');
   document.getElementById('modalTitle').textContent = 'הוספת מועמד';
-  ['mName','mEmail','mRole','mNotes'].forEach(i => document.getElementById(i).value = '');
+  ['mName','mEmail','mPhone','mRole','mReferral','mNotes','mRejectReason'].forEach(i => document.getElementById(i).value = '');
   document.getElementById('mStage').value = 'new';
+  document.getElementById('mRejectedBy').value = '';
+  toggleRejectFields();
   document.getElementById('candModal').classList.add('show');
 }
 function openEditModal(id) {
@@ -551,34 +648,48 @@ function openEditModal(id) {
   if (!c) return;
   editingId = id;
   fillStageSelect();
+  fillJobSelect(c.jobId || '');
   document.getElementById('modalTitle').textContent = 'עריכת מועמד';
   document.getElementById('mName').value = c.name;
   document.getElementById('mEmail').value = c.email;
+  document.getElementById('mPhone').value = c.phone || '';
   document.getElementById('mRole').value = c.role || '';
+  document.getElementById('mReferral').value = c.referral || '';
   document.getElementById('mStage').value = c.stage;
   document.getElementById('mNotes').value = c.notes || '';
+  document.getElementById('mRejectReason').value = c.rejectionReason || '';
+  document.getElementById('mRejectedBy').value = c.rejectedBy || '';
+  toggleRejectFields();
   document.getElementById('candModal').classList.add('show');
 }
 function closeModal() { document.getElementById('candModal').classList.remove('show'); }
 
-async function saveModal() {
+function modalPayload() {
   const v = id => document.getElementById(id).value.trim();
   const stage = document.getElementById('mStage').value;
-  const notes = document.getElementById('mNotes').value;
+  return {
+    name: v('mName'), email: v('mEmail'), phone: v('mPhone'),
+    role: v('mRole'), referral: v('mReferral'),
+    jobId: document.getElementById('mJob').value || null,
+    stage, notes: document.getElementById('mNotes').value,
+    rejectionReason: stage === 'rejected' ? v('mRejectReason') : '',
+    rejectedBy: stage === 'rejected' ? document.getElementById('mRejectedBy').value : '',
+  };
+}
+
+async function saveModal() {
+  const payload = modalPayload();
   try {
     if (editingId) {
       const updated = await api('/api/candidates/' + editingId, {
-        method: 'PATCH',
-        body: JSON.stringify({ name: v('mName'), email: v('mEmail'), role: v('mRole'), stage, notes }),
+        method: 'PATCH', body: JSON.stringify(payload),
       });
       const i = candidates.findIndex(x => x.id === editingId);
       if (i >= 0) candidates[i] = updated;
     } else {
-      if (!v('mName')) { alert('נא להזין שם'); return; }
-      const created = await api('/api/candidates', {
-        method: 'POST',
-        body: JSON.stringify({ name: v('mName'), email: v('mEmail'), role: v('mRole'), stage, notes }),
-      });
+      if (!payload.name) { alert('נא להזין שם'); return; }
+      const created = await createCandidateWithDedup(payload);
+      if (!created) return; // user cancelled the duplicate prompt
       candidates.push(created);
     }
     scoreAll();
@@ -587,6 +698,38 @@ async function saveModal() {
   } catch (err) {
     setStatus('שגיאה בשמירה: ' + err.message, true);
   }
+}
+
+// POST a candidate; on a 409 duplicate, offer to attach a new application to the
+// existing person instead of creating a duplicate.
+async function createCandidateWithDedup(payload) {
+  const res = await fetch(API_BASE + '/api/candidates', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + getToken() },
+    body: JSON.stringify(payload),
+  });
+  if (res.status === 409) {
+    const body = await res.json();
+    const dup = body.duplicate;
+    const existingJobs = (dup.applications || [])
+      .map(a => a.jobNumber ? `#${a.jobNumber} ${a.jobTitle}` : (a.role || a.stage)).filter(Boolean).join(', ');
+    const ok = confirm(
+      `מועמד קיים: ${dup.person.name}` +
+      (dup.person.email ? ` (${dup.person.email})` : '') +
+      (existingJobs ? `\nהגשות קיימות: ${existingJobs}` : '') +
+      `\n\nלהוסיף הגשה חדשה לאותו מועמד?`
+    );
+    if (!ok) return null;
+    return await api('/api/candidates', {
+      method: 'POST',
+      body: JSON.stringify({ ...payload, personId: dup.person.id }),
+    });
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || ('שגיאה ' + res.status));
+  }
+  return res.json();
 }
 
 document.getElementById('candModal').addEventListener('click', e => {
@@ -720,12 +863,188 @@ function handleOAuthReturn() {
   }
 }
 
+/* ---------- Jobs ---------- */
+const TRACK_LABELS = { office: 'משרדי / תפעולי', multi: 'רב-תחומי', project: 'פרויקטים' };
+
+function fillJobClientSelect(selectedId) {
+  document.getElementById('jClient').innerHTML =
+    '<option value="">— ללא לקוח —</option>' +
+    clients.map(c => `<option value="${c.id}" ${c.id === selectedId ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
+}
+
+function renderJobs() {
+  fillJobClientSelect(document.getElementById('jClient').value || '');
+  const wrap = document.getElementById('jobsWrap');
+  if (!jobs.length) { wrap.innerHTML = '<div class="empty">אין משרות עדיין. הקם משרה חדשה למעלה.</div>'; return; }
+  const rows = jobs.map(j => {
+    const count = candidates.filter(c => c.jobId === j.id).length;
+    return `<tr>
+      <td><b>#${esc(j.jobNumber)}</b></td>
+      <td>${esc(j.title)}</td>
+      <td>${esc(j.clientName || '')}</td>
+      <td>${j.track ? esc(TRACK_LABELS[j.track] || j.track) : ''}</td>
+      <td>${j.status === 'open' ? 'פתוחה' : 'סגורה'}</td>
+      <td>${count}</td>
+      <td><button class="btn small" onclick="editJob('${j.id}')">✏️</button>
+          <button class="btn small" style="color:var(--red)" onclick="delJob('${j.id}')">🗑</button></td>
+    </tr>`;
+  }).join('');
+  wrap.innerHTML = `<table><thead><tr>
+    <th>מס׳</th><th>כותרת</th><th>לקוח</th><th>מסלול</th><th>סטטוס</th><th>מועמדים</th><th></th>
+  </tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function resetJobForm() {
+  editingJobId = null;
+  document.getElementById('jobFormTitle').textContent = 'הקמת משרה חדשה';
+  ['jTitle','jKeywords','jDescription'].forEach(i => document.getElementById(i).value = '');
+  document.getElementById('jClient').value = '';
+  document.getElementById('jTrack').value = '';
+  document.getElementById('jStatus').value = 'open';
+  document.getElementById('jCancelBtn').style.display = 'none';
+}
+
+function editJob(id) {
+  const j = jobs.find(x => x.id === id);
+  if (!j) return;
+  editingJobId = id;
+  document.getElementById('jobFormTitle').textContent = 'עריכת משרה #' + j.jobNumber;
+  document.getElementById('jTitle').value = j.title;
+  fillJobClientSelect(j.clientId || '');
+  document.getElementById('jTrack').value = j.track || '';
+  document.getElementById('jStatus').value = j.status;
+  document.getElementById('jKeywords').value = j.keywords || '';
+  document.getElementById('jDescription').value = j.description || '';
+  document.getElementById('jCancelBtn').style.display = '';
+  window.scrollTo(0, 0);
+}
+
+async function saveJob() {
+  const v = id => document.getElementById(id).value.trim();
+  if (!v('jTitle')) { alert('נא להזין כותרת משרה'); return; }
+  const payload = {
+    title: v('jTitle'),
+    clientId: document.getElementById('jClient').value || null,
+    track: document.getElementById('jTrack').value || '',
+    status: document.getElementById('jStatus').value,
+    keywords: v('jKeywords'),
+    description: document.getElementById('jDescription').value,
+  };
+  try {
+    if (editingJobId) {
+      const updated = await api('/api/jobs/' + editingJobId, { method: 'PATCH', body: JSON.stringify(payload) });
+      const i = jobs.findIndex(x => x.id === editingJobId); if (i >= 0) jobs[i] = updated;
+    } else {
+      jobs.unshift(await api('/api/jobs', { method: 'POST', body: JSON.stringify(payload) }));
+    }
+    resetJobForm();
+    renderJobs();
+    const m = document.getElementById('jobMsg'); m.textContent = '✓ נשמר'; setTimeout(() => m.textContent = '', 2000);
+  } catch (err) {
+    setStatus('שגיאה בשמירת משרה: ' + err.message, true);
+  }
+}
+
+async function delJob(id) {
+  const used = candidates.filter(c => c.jobId === id).length;
+  if (!confirm(used ? `למשרה משויכים ${used} מועמדים (השיוך יוסר, המועמדים יישארו). למחוק?` : 'למחוק את המשרה?')) return;
+  try {
+    await api('/api/jobs/' + id, { method: 'DELETE' });
+    jobs = jobs.filter(j => j.id !== id);
+    candidates.forEach(c => { if (c.jobId === id) { c.jobId = ''; c.jobNumber = ''; c.jobTitle = ''; } });
+    renderJobs(); renderAll();
+  } catch (err) {
+    setStatus('שגיאה במחיקת משרה: ' + err.message, true);
+  }
+}
+
+/* ---------- Clients ---------- */
+function renderClients() {
+  const wrap = document.getElementById('clientsWrap');
+  if (!clients.length) { wrap.innerHTML = '<div class="empty">אין לקוחות עדיין.</div>'; return; }
+  const rows = clients.map(c => {
+    const jobCount = jobs.filter(j => j.clientId === c.id).length;
+    return `<tr>
+      <td><b>${esc(c.name)}</b></td>
+      <td>${esc(c.contactName || '')}${c.contactPhone ? '<br><span style="color:var(--muted);font-size:11px">' + esc(c.contactPhone) + '</span>' : ''}</td>
+      <td>${esc(c.lookingFor || '')}</td>
+      <td>${jobCount}</td>
+      <td><button class="btn small" onclick="editClient('${c.id}')">✏️</button>
+          <button class="btn small" style="color:var(--red)" onclick="delClient('${c.id}')">🗑</button></td>
+    </tr>`;
+  }).join('');
+  wrap.innerHTML = `<table><thead><tr>
+    <th>לקוח</th><th>איש קשר</th><th>מחפש</th><th>משרות</th><th></th>
+  </tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function resetClientForm() {
+  editingClientId = null;
+  document.getElementById('clientFormTitle').textContent = 'הוספת לקוח';
+  ['clName','clContactName','clContactEmail','clContactPhone','clLookingFor','clNotes'].forEach(i => document.getElementById(i).value = '');
+  document.getElementById('clCancelBtn').style.display = 'none';
+}
+
+function editClient(id) {
+  const c = clients.find(x => x.id === id);
+  if (!c) return;
+  editingClientId = id;
+  document.getElementById('clientFormTitle').textContent = 'עריכת לקוח';
+  document.getElementById('clName').value = c.name;
+  document.getElementById('clContactName').value = c.contactName || '';
+  document.getElementById('clContactEmail').value = c.contactEmail || '';
+  document.getElementById('clContactPhone').value = c.contactPhone || '';
+  document.getElementById('clLookingFor').value = c.lookingFor || '';
+  document.getElementById('clNotes').value = c.notes || '';
+  document.getElementById('clCancelBtn').style.display = '';
+  window.scrollTo(0, 0);
+}
+
+async function saveClient() {
+  const v = id => document.getElementById(id).value.trim();
+  if (!v('clName')) { alert('נא להזין שם לקוח'); return; }
+  const payload = {
+    name: v('clName'), contactName: v('clContactName'),
+    contactEmail: v('clContactEmail'), contactPhone: v('clContactPhone'),
+    lookingFor: document.getElementById('clLookingFor').value, notes: document.getElementById('clNotes').value,
+  };
+  try {
+    if (editingClientId) {
+      const updated = await api('/api/clients/' + editingClientId, { method: 'PATCH', body: JSON.stringify(payload) });
+      const i = clients.findIndex(x => x.id === editingClientId); if (i >= 0) clients[i] = updated;
+    } else {
+      clients.push(await api('/api/clients', { method: 'POST', body: JSON.stringify(payload) }));
+      clients.sort((a, b) => a.name.localeCompare(b.name));
+    }
+    resetClientForm();
+    renderClients();
+    const m = document.getElementById('clientMsg'); m.textContent = '✓ נשמר'; setTimeout(() => m.textContent = '', 2000);
+  } catch (err) {
+    setStatus('שגיאה בשמירת לקוח: ' + err.message, true);
+  }
+}
+
+async function delClient(id) {
+  const used = jobs.filter(j => j.clientId === id).length;
+  if (!confirm(used ? `ללקוח משויכות ${used} משרות (השיוך יוסר). למחוק?` : 'למחוק את הלקוח?')) return;
+  try {
+    await api('/api/clients/' + id, { method: 'DELETE' });
+    clients = clients.filter(c => c.id !== id);
+    jobs.forEach(j => { if (j.clientId === id) { j.clientId = ''; j.clientName = ''; } });
+    renderClients(); renderJobs();
+  } catch (err) {
+    setStatus('שגיאה במחיקת לקוח: ' + err.message, true);
+  }
+}
+
 /* ---------- Tabs ---------- */
 function switchTab(t) {
   document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
   document.querySelectorAll('.tabview').forEach(v => v.style.display = 'none');
   document.getElementById('tab-' + t).style.display = '';
   if (t === 'settings') { renderSettings(); loadConnections(); }
+  if (t === 'jobs') renderJobs();
+  if (t === 'clients') renderClients();
 }
 
 /* ---------- Init ---------- */

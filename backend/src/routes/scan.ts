@@ -4,6 +4,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { getProvider, sourceFor } from '../providers/index.js';
 import { encrypt, decrypt } from '../lib/crypto.js';
+import { findOrCreatePerson } from '../lib/people.js';
 import type { ScanSettings } from '../providers/types.js';
 
 const router = Router();
@@ -59,11 +60,14 @@ router.post('/', asyncHandler(async (req, res) => {
       const messages = await provider.searchMessages(tokens.accessToken, settings);
       const source = sourceFor(conn.provider);
       for (const m of messages) {
+        // Reuse an existing person (dedup by email) or create one, then record
+        // the inbound email as an application. ext_key keeps re-imports idempotent.
+        const person = await findOrCreatePerson(pool, { name: m.name, email: m.email });
         const ins = await pool.query(
-          `INSERT INTO candidates (ext_key, source, name, email, subject, snippet, email_date, link)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          `INSERT INTO applications (person_id, source, ext_key, subject, snippet, email_date, link)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
            ON CONFLICT (ext_key) DO NOTHING`,
-          [m.extKey, source, m.name, m.email, m.subject, m.snippet, m.date || null, m.link]
+          [person.id, source, m.extKey, m.subject, m.snippet, m.date || null, m.link]
         );
         added += ins.rowCount ?? 0;
       }
