@@ -3,6 +3,7 @@ import { pool } from '../db/pool.js';
 import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { getProvider } from '../providers/index.js';
+import { isConfigured as geminiConfigured } from '../lib/gemini.js';
 
 const router = Router();
 
@@ -19,7 +20,7 @@ router.get('/', asyncHandler(async (req, res) => {
     google: !!getProvider('google')?.isConfigured(),
     microsoft: !!getProvider('microsoft')?.isConfigured()
   };
-  res.json({ connections: result.rows, available });
+  res.json({ connections: result.rows, available, aiConfigured: geminiConfigured() });
 }));
 
 router.delete('/:provider', asyncHandler(async (req, res) => {

@@ -179,7 +179,7 @@
   </div>
   <div class="toolbar">
     <button class="btn primary" id="btnScan" onclick="scanEmails()">🔍 סרוק מיילים</button>
-    <button class="btn" disabled title="יתווסף בשלב הבא — סינון AI">🤖 סינון AI (בקרוב)</button>
+    <button class="btn" id="btnBatchAI" onclick="analyzeNew()" title="נתח קו&quot;ח של מועמדים חדשים עם קובץ מצורף">🤖 נתח קו"ח חדשים</button>
     <button class="btn primary" onclick="openAddModal()">＋ הוסף מועמד</button>
     <span style="color:var(--muted);font-size:12px" id="whoami"></span>
     <button class="btn small" onclick="logout()">יציאה</button>
@@ -325,9 +325,29 @@
       </div>
     </div>
     <div class="field"><label>הערות</label><textarea id="mNotes"></textarea></div>
+    <div id="mAiBox" style="display:none; border-top:1px solid var(--border); padding-top:12px; margin-top:4px">
+      <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px">🤖 ניתוח קו"ח (Gemini)</label>
+      <div class="hint" style="margin-bottom:8px">צרף קובץ קו"ח (PDF/Word/תמונה) לניתוח, או השאר ריק כדי לנתח את הקובץ מהמייל.</div>
+      <input type="file" id="mCvFile" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" style="margin-bottom:8px">
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap">
+        <button class="btn" onclick="analyzeFromModal()">🤖 נתח קו"ח</button>
+        <button class="btn small" id="mShowAnalysis" style="display:none" onclick="openAnalysisModal(editingId)">📄 הצג ניתוח אחרון</button>
+      </div>
+    </div>
     <div class="row">
       <button class="btn primary" onclick="saveModal()">שמור</button>
       <button class="btn" onclick="closeModal()">ביטול</button>
+    </div>
+  </div>
+</div>
+
+<!-- AI analysis modal (interview-prep document) -->
+<div class="overlay" id="aiModal">
+  <div class="modal">
+    <h3 id="aiModalTitle">ניתוח קו"ח</h3>
+    <div id="aiModalBody"></div>
+    <div class="row">
+      <button class="btn" onclick="closeAiModal()">סגור</button>
     </div>
   </div>
 </div>
@@ -368,6 +388,7 @@ let settings = Object.assign({}, DEFAULT_SETTINGS);
 let editingId = null;
 let editingJobId = null;
 let editingClientId = null;
+let aiConfigured = false;
 
 /* ---------- API + auth ---------- */
 const API_BASE = window.API_BASE || 'http://localhost:3001';
@@ -521,6 +542,8 @@ function cardHTML(c) {
     ${c.subject ? `<div class="snippet"><b>${esc(c.subject)}</b> — ${esc(c.snippet)}</div>` : ''}
     <div class="actions">
       <button onclick="openEditModal('${c.id}')">✏️ ערוך</button>
+      ${c.ai ? `<button onclick="openAnalysisModal('${c.id}')">📄 ניתוח</button>`
+             : `<button onclick="analyzeCandidate('${c.id}')">🤖 נתח</button>`}
       ${c.link ? `<a href="${esc(c.link)}" target="_blank">📧 פתח מייל</a>` : ''}
       <button class="del" onclick="delCand('${c.id}')">מחק</button>
     </div>
@@ -641,6 +664,7 @@ function openAddModal() {
   document.getElementById('mStage').value = 'new';
   document.getElementById('mRejectedBy').value = '';
   toggleRejectFields();
+  document.getElementById('mAiBox').style.display = 'none'; // analysis available after saving
   document.getElementById('candModal').classList.add('show');
 }
 function openEditModal(id) {
@@ -660,9 +684,90 @@ function openEditModal(id) {
   document.getElementById('mRejectReason').value = c.rejectionReason || '';
   document.getElementById('mRejectedBy').value = c.rejectedBy || '';
   toggleRejectFields();
+  // Analysis section is available once a candidate exists (edit mode).
+  document.getElementById('mAiBox').style.display = '';
+  document.getElementById('mCvFile').value = '';
+  document.getElementById('mShowAnalysis').style.display = c.ai ? '' : 'none';
   document.getElementById('candModal').classList.add('show');
 }
 function closeModal() { document.getElementById('candModal').classList.remove('show'); }
+
+/* ---------- AI analysis (Gemini) ---------- */
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1]); // strip data: prefix
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function analyzeCandidate(id, file) {
+  const c = candidates.find(x => x.id === id);
+  if (!c) return;
+  setStatus('🤖 מנתח קו"ח של ' + c.name + '… (עשוי לקחת מספר שניות)');
+  try {
+    const updated = await api('/api/candidates/' + id + '/analyze', {
+      method: 'POST', body: JSON.stringify(file ? { file } : {}),
+    });
+    const i = candidates.findIndex(x => x.id === id);
+    if (i >= 0) candidates[i] = updated;
+    scoreAll(); renderAll();
+    setStatus('');
+    openAnalysisModal(id);
+  } catch (err) {
+    setStatus('שגיאה בניתוח: ' + err.message, true);
+  }
+}
+
+async function analyzeFromModal() {
+  if (!editingId) { alert('שמור את המועמד תחילה'); return; }
+  const input = document.getElementById('mCvFile');
+  let file = null;
+  if (input.files && input.files[0]) {
+    const f = input.files[0];
+    file = { filename: f.name, mimeType: f.type, dataBase64: await fileToBase64(f) };
+  }
+  closeModal();
+  await analyzeCandidate(editingId, file);
+}
+
+function openAnalysisModal(id) {
+  const c = candidates.find(x => x.id === id);
+  if (!c || !c.ai) { setStatus('אין ניתוח זמין למועמד זה.', true); return; }
+  const a = c.ai;
+  const list = arr => ((arr || []).map(x => `<li>${esc(x)}</li>`).join('') || '<li style="color:var(--muted)">—</li>');
+  const fitTxt = a.relevant ? `רלוונטי · רמת התאמה ${a.fit}/3` : 'לא רלוונטי למשרה';
+  document.getElementById('aiModalTitle').textContent = '🤖 ניתוח קו"ח — ' + c.name;
+  document.getElementById('aiModalBody').innerHTML = `
+    <div class="field"><b>${esc(fitTxt)}</b>${c.jobNumber ? ` · משרה #${esc(c.jobNumber)} ${esc(c.jobTitle)}` : ' · ללא משרה משויכת'}</div>
+    <div class="field"><b>סיכום</b><br>${esc(a.summary || '')}</div>
+    <div class="field"><b>יתרונות</b><ul>${list(a.strengths)}</ul></div>
+    <div class="field"><b>נקודות לבירור בראיון</b><ul>${list(a.concerns)}</ul></div>
+    <div class="field"><b>שאלות לראיון הטלפוני</b><ul>${list(a.interviewQuestions)}</ul></div>
+    <div class="field"><b>מילות מפתח שנמצאו</b><br>${(a.matchedKeywords || []).map(k => `<span class="badge crit">${esc(k)}</span>`).join(' ') || '<span style="color:var(--muted)">—</span>'}</div>
+  `;
+  document.getElementById('aiModal').classList.add('show');
+}
+function closeAiModal() { document.getElementById('aiModal').classList.remove('show'); }
+document.getElementById('aiModal').addEventListener('click', e => { if (e.target.id === 'aiModal') closeAiModal(); });
+
+async function analyzeNew() {
+  const list = candidates.filter(c => !c.ai && c.hasAttachment);
+  if (!list.length) { setStatus('אין מועמדים חדשים עם קו"ח מצורף לניתוח.'); return; }
+  if (!confirm(`לנתח ${list.length} מועמדים? הפעולה כרוכה בעלות שימוש ב-API.`)) return;
+  let done = 0, failed = 0;
+  for (const c of list) {
+    setStatus(`🤖 מנתח… ${done + failed + 1}/${list.length}`);
+    try {
+      const updated = await api('/api/candidates/' + c.id + '/analyze', { method: 'POST', body: JSON.stringify({}) });
+      const i = candidates.findIndex(x => x.id === c.id); if (i >= 0) candidates[i] = updated;
+      done++;
+    } catch { failed++; }
+  }
+  scoreAll(); renderAll();
+  setStatus(`ניתוח הושלם: ${done} הצליחו${failed ? `, ${failed} נכשלו` : ''}.`, !!failed);
+}
 
 function modalPayload() {
   const v = id => document.getElementById(id).value.trim();
@@ -791,6 +896,12 @@ async function loadConnections() {
   if (!wrap) return;
   try {
     const data = await api('/api/connections');
+    aiConfigured = !!data.aiConfigured;
+    const batchBtn = document.getElementById('btnBatchAI');
+    if (batchBtn) {
+      batchBtn.disabled = !aiConfigured;
+      batchBtn.title = aiConfigured ? 'נתח קו"ח של מועמדים חדשים עם קובץ מצורף' : 'AI לא הוגדר בשרת (חסר GEMINI_API_KEY)';
+    }
     const connected = {};
     (data.connections || []).forEach(c => { connected[c.provider] = c; });
     const available = data.available || {};

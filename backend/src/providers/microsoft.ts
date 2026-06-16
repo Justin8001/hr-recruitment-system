@@ -1,4 +1,5 @@
-import type { EmailProvider, ScanSettings, ScannedMessage, TokenSet } from './types.js';
+import type { CvAttachment, EmailProvider, ScanSettings, ScannedMessage, TokenSet } from './types.js';
+import { cvRank, mimeForFilename } from './attachments.js';
 
 const SCOPES = 'offline_access Mail.Read User.Read';
 
@@ -90,7 +91,7 @@ async function searchMessages(accessToken: string, settings: ScanSettings): Prom
 
   const url =
     'https://graph.microsoft.com/v1.0/me/messages' +
-    '?$select=subject,from,receivedDateTime,bodyPreview,webLink,internetMessageId' +
+    '?$select=id,subject,from,receivedDateTime,bodyPreview,webLink,internetMessageId,hasAttachments' +
     '&$top=50&$search=' + encodeURIComponent(`"${search}"`);
 
   const res = await fetch(url, {
@@ -106,6 +107,8 @@ async function searchMessages(accessToken: string, settings: ScanSettings): Prom
     const addr = it.from?.emailAddress || {};
     out.push({
       extKey: 'outlook:' + (it.internetMessageId || it.id),
+      providerMessageId: it.id,
+      hasAttachment: !!it.hasAttachments,
       name: addr.name || addr.address || 'לא ידוע',
       email: addr.address || '',
       subject: it.subject || '(ללא נושא)',
@@ -117,10 +120,33 @@ async function searchMessages(accessToken: string, settings: ScanSettings): Prom
   return out;
 }
 
+async function downloadCvAttachment(accessToken: string, messageId: string): Promise<CvAttachment | null> {
+  const res = await fetch(
+    `https://graph.microsoft.com/v1.0/me/messages/${messageId}/attachments`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!res.ok) return null;
+  const data = await res.json().catch(() => ({}));
+
+  const files = (data.value || [])
+    .filter((a: any) => a['@odata.type'] === '#microsoft.graph.fileAttachment' && a.contentBytes)
+    .filter((a: any) => cvRank(a.name) > 0)
+    .sort((a: any, b: any) => cvRank(b.name) - cvRank(a.name));
+  const best = files[0];
+  if (!best) return null;
+
+  return {
+    filename: best.name,
+    mimeType: best.contentType || mimeForFilename(best.name),
+    dataBase64: best.contentBytes  // Graph returns standard base64
+  };
+}
+
 export const microsoft: EmailProvider = {
   isConfigured,
   authUrl,
   exchangeCode,
   refreshAccessToken,
-  searchMessages
+  searchMessages,
+  downloadCvAttachment
 };

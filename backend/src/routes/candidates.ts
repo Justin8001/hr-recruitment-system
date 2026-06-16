@@ -3,8 +3,18 @@ import { pool } from '../db/pool.js';
 import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { findOrCreatePerson, findPerson, normalizeEmail, normalizePhone } from '../lib/people.js';
+import { getProvider } from '../providers/index.js';
+import { encrypt, decrypt } from '../lib/crypto.js';
+import { prepareCvParts, type GeminiPart } from '../lib/cv.js';
+import { analyzeCv, isConfigured as geminiConfigured } from '../lib/gemini.js';
+import type { CvAttachment } from '../providers/types.js';
 
 const router = Router();
+
+// candidate.source ('gmail'|'outlook') -> provider key ('google'|'microsoft')
+function providerForSource(source: string): string {
+  return source === 'gmail' ? 'google' : 'microsoft';
+}
 
 const STAGES = ['new', 'screen', 'phone', 'interview', 'offer', 'hired', 'rejected'];
 const REJECTED_BY = ['us', 'client'];
@@ -41,6 +51,8 @@ function rowToCandidate(r: any) {
     rejectedBy: r.rejected_by ?? '',
     notes: r.notes ?? '',
     ai: r.ai ?? null,
+    hasAttachment: !!r.has_attachment,
+    analyzedAt: r.analyzed_at ? new Date(r.analyzed_at).toISOString() : '',
     addedAt: r.added_at ? new Date(r.added_at).toISOString() : ''
   };
 }
@@ -178,6 +190,91 @@ router.patch('/:id', asyncHandler(async (req, res) => {
   } finally {
     client.release();
   }
+}));
+
+// AI analysis: read the CV (uploaded file or downloaded from the source email),
+// score it against the assigned job via Gemini, and store the result on the application.
+router.post('/:id/analyze', asyncHandler(async (req, res) => {
+  if (!geminiConfigured()) {
+    return res.status(400).json({ error: 'AI לא הוגדר בשרת (חסר GEMINI_API_KEY)' });
+  }
+  const userId = req.user!.userId;
+
+  const r = await pool.query(
+    `SELECT a.*, p.name AS person_name,
+            j.job_number, j.title AS job_title, j.keywords AS job_keywords,
+            j.description AS job_description,
+            c.name AS client_name, c.looking_for AS client_looking_for
+     FROM applications a
+     JOIN people p ON p.id = a.person_id
+     LEFT JOIN jobs j ON j.id = a.job_id
+     LEFT JOIN clients c ON c.id = j.client_id
+     WHERE a.id = $1`,
+    [req.params.id]
+  );
+  const row = r.rows[0];
+  if (!row) return res.status(404).json({ error: 'מועמד לא נמצא' });
+
+  // 1) Obtain the CV: prefer an uploaded file, else download from the source email.
+  let file: CvAttachment | null = null;
+  const up = req.body?.file;
+  if (up?.dataBase64) {
+    file = { filename: up.filename || 'cv', mimeType: up.mimeType || '', dataBase64: up.dataBase64 };
+  } else if (row.provider_message_id && row.source !== 'manual') {
+    const provider = getProvider(providerForSource(row.source));
+    const conn = await pool.query(
+      'SELECT refresh_token_enc FROM email_connections WHERE user_id = $1 AND provider = $2',
+      [userId, providerForSource(row.source)]
+    );
+    if (provider && conn.rows[0]) {
+      const tokens = await provider.refreshAccessToken(decrypt(conn.rows[0].refresh_token_enc));
+      await pool.query(
+        `UPDATE email_connections
+         SET access_token_enc = $1, expires_at = $2,
+             refresh_token_enc = COALESCE($3, refresh_token_enc)
+         WHERE user_id = $4 AND provider = $5`,
+        [
+          encrypt(tokens.accessToken), tokens.expiresAt,
+          tokens.refreshToken ? encrypt(tokens.refreshToken) : null,
+          userId, providerForSource(row.source)
+        ]
+      );
+      file = await provider.downloadCvAttachment(tokens.accessToken, row.provider_message_id);
+    }
+  }
+
+  // 2) Build Gemini parts: the CV file, or fall back to the email text.
+  const prepared = await prepareCvParts(file);
+  let parts: GeminiPart[];
+  if (prepared) {
+    parts = prepared.parts;
+  } else {
+    const emailText = [row.subject, row.snippet, row.notes].filter(Boolean).join('\n').trim();
+    if (!emailText) {
+      return res.status(400).json({
+        error: 'לא נמצא קובץ קו"ח לניתוח. צרף קובץ ידנית או ודא שלמייל מצורף קובץ.'
+      });
+    }
+    parts = [{ text: 'אין קובץ קו"ח — הסתמך על טקסט המייל בלבד:\n' + emailText }];
+  }
+
+  // 3) Analyze and persist.
+  const analysis = await analyzeCv(
+    {
+      jobNumber: row.job_number, title: row.job_title, keywords: row.job_keywords,
+      description: row.job_description, clientName: row.client_name,
+      clientLookingFor: row.client_looking_for
+    },
+    parts
+  );
+  const updated = await pool.query(
+    `UPDATE applications SET ai = $1, analyzed_at = now() WHERE id = $2 RETURNING id`,
+    [analysis, req.params.id]
+  );
+  if (!updated.rows[0]) return res.status(404).json({ error: 'מועמד לא נמצא' });
+
+  const result = await pool.query(`${SELECT_CANDIDATE} WHERE a.id = $1`, [req.params.id]);
+  res.json(rowToCandidate(result.rows[0]));
 }));
 
 router.delete('/:id', asyncHandler(async (req, res) => {

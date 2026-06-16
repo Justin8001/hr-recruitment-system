@@ -1,4 +1,5 @@
-import type { EmailProvider, ScanSettings, ScannedMessage, TokenSet } from './types.js';
+import type { CvAttachment, EmailProvider, ScanSettings, ScannedMessage, TokenSet } from './types.js';
+import { base64UrlToBase64, cvRank, mimeForFilename } from './attachments.js';
 
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -122,6 +123,8 @@ async function searchMessages(accessToken: string, settings: ScanSettings): Prom
     const dateRaw = getH('date');
     out.push({
       extKey: 'gmail:' + (det.threadId || m.id),
+      providerMessageId: m.id,
+      hasAttachment: hasFileParts(det.payload),
       name: snd.name || snd.email || 'לא ידוע',
       email: snd.email,
       subject: getH('subject'),
@@ -133,10 +136,53 @@ async function searchMessages(accessToken: string, settings: ScanSettings): Prom
   return out;
 }
 
+// Walk a Gmail MIME tree collecting parts that have a (CV-like) filename.
+function collectAttachmentParts(payload: any, acc: any[] = []): any[] {
+  if (!payload) return acc;
+  if (payload.filename && payload.body?.attachmentId) acc.push(payload);
+  for (const p of payload.parts || []) collectAttachmentParts(p, acc);
+  return acc;
+}
+
+function hasFileParts(payload: any): boolean {
+  return collectAttachmentParts(payload).some((p) => cvRank(p.filename) > 0);
+}
+
+async function downloadCvAttachment(accessToken: string, messageId: string): Promise<CvAttachment | null> {
+  const auth = { Authorization: `Bearer ${accessToken}` };
+  const detRes = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=full`,
+    { headers: auth }
+  );
+  if (!detRes.ok) return null;
+  const det = await detRes.json().catch(() => ({}));
+
+  const parts = collectAttachmentParts(det.payload)
+    .filter((p) => cvRank(p.filename) > 0)
+    .sort((a, b) => cvRank(b.filename) - cvRank(a.filename));
+  const best = parts[0];
+  if (!best) return null;
+
+  const attRes = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${best.body.attachmentId}`,
+    { headers: auth }
+  );
+  if (!attRes.ok) return null;
+  const att = await attRes.json().catch(() => ({}));
+  if (!att.data) return null;
+
+  return {
+    filename: best.filename,
+    mimeType: best.mimeType || mimeForFilename(best.filename),
+    dataBase64: base64UrlToBase64(att.data)
+  };
+}
+
 export const google: EmailProvider = {
   isConfigured,
   authUrl,
   exchangeCode,
   refreshAccessToken,
-  searchMessages
+  searchMessages,
+  downloadCvAttachment
 };

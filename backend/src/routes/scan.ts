@@ -64,12 +64,19 @@ router.post('/', asyncHandler(async (req, res) => {
         // the inbound email as an application. ext_key keeps re-imports idempotent.
         const person = await findOrCreatePerson(pool, { name: m.name, email: m.email });
         const ins = await pool.query(
-          `INSERT INTO applications (person_id, source, ext_key, subject, snippet, email_date, link)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
-           ON CONFLICT (ext_key) DO NOTHING`,
-          [person.id, source, m.extKey, m.subject, m.snippet, m.date || null, m.link]
+          `INSERT INTO applications
+             (person_id, source, ext_key, subject, snippet, email_date, link,
+              provider_message_id, has_attachment)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           ON CONFLICT (ext_key) DO UPDATE SET
+             provider_message_id = COALESCE(applications.provider_message_id, EXCLUDED.provider_message_id),
+             has_attachment = EXCLUDED.has_attachment
+           RETURNING (xmax = 0) AS inserted`,
+          [person.id, source, m.extKey, m.subject, m.snippet, m.date || null, m.link,
+           m.providerMessageId, m.hasAttachment]
         );
-        added += ins.rowCount ?? 0;
+        // With DO UPDATE, rowCount is always 1; xmax = 0 marks a true insert (vs. a backfill).
+        if (ins.rows[0]?.inserted) added += 1;
       }
     } catch (err: any) {
       errors.push(`${conn.provider}: ${err.message}`);
