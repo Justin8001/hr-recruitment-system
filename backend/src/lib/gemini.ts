@@ -87,10 +87,26 @@ export async function analyzeCv(job: JobContext, cvParts: GeminiPart[]): Promise
     }
   };
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model()}:generateContent?key=${key}`,
-    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
-  );
+  // Hard timeout so a hung request fails fast instead of blocking forever.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 120000);
+  let res: Response;
+  try {
+    res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model()}:generateContent?key=${key}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      }
+    );
+  } catch (err: any) {
+    if (err?.name === 'AbortError') throw new Error('Gemini לא הגיב בזמן (timeout של 2 דקות)');
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error(`Gemini error: ${data.error?.message || res.status}`);

@@ -341,6 +341,15 @@
   </div>
 </div>
 
+<!-- Busy overlay (shown during AI analysis) -->
+<div class="overlay" id="busyOverlay" style="z-index:60">
+  <div class="modal" style="max-width:360px; text-align:center">
+    <div style="font-size:34px" class="spin">⏳</div>
+    <div id="busyText" style="margin-top:12px; font-size:14px; font-weight:600">מנתח…</div>
+    <div class="hint" style="margin-top:6px">ניתוח קו"ח עם Gemini עשוי לקחת מספר עשרות שניות לכל מועמד. נא להמתין.</div>
+  </div>
+</div>
+
 <!-- AI analysis modal (interview-prep document) -->
 <div class="overlay" id="aiModal">
   <div class="modal">
@@ -702,10 +711,17 @@ function fileToBase64(file) {
   });
 }
 
+function showBusy(text) {
+  document.getElementById('busyText').textContent = text || 'מעבד…';
+  document.getElementById('busyOverlay').classList.add('show');
+}
+function setBusy(text) { document.getElementById('busyText').textContent = text; }
+function hideBusy() { document.getElementById('busyOverlay').classList.remove('show'); }
+
 async function analyzeCandidate(id, file) {
   const c = candidates.find(x => x.id === id);
   if (!c) return;
-  setStatus('🤖 מנתח קו"ח של ' + c.name + '… (עשוי לקחת מספר שניות)');
+  showBusy('🤖 מנתח קו"ח של ' + c.name + '…');
   try {
     const updated = await api('/api/candidates/' + id + '/analyze', {
       method: 'POST', body: JSON.stringify(file ? { file } : {}),
@@ -713,9 +729,10 @@ async function analyzeCandidate(id, file) {
     const i = candidates.findIndex(x => x.id === id);
     if (i >= 0) candidates[i] = updated;
     scoreAll(); renderAll();
-    setStatus('');
+    hideBusy();
     openAnalysisModal(id);
   } catch (err) {
+    hideBusy();
     setStatus('שגיאה בניתוח: ' + err.message, true);
   }
 }
@@ -757,15 +774,17 @@ async function analyzeNew() {
   if (!list.length) { setStatus('אין מועמדים חדשים עם קו"ח מצורף לניתוח.'); return; }
   if (!confirm(`לנתח ${list.length} מועמדים? הפעולה כרוכה בעלות שימוש ב-API.`)) return;
   let done = 0, failed = 0;
+  showBusy(`🤖 מנתח 1/${list.length}…`);
   for (const c of list) {
-    setStatus(`🤖 מנתח… ${done + failed + 1}/${list.length}`);
+    setBusy(`🤖 מנתח ${done + failed + 1}/${list.length}: ${c.name}`);
     try {
       const updated = await api('/api/candidates/' + c.id + '/analyze', { method: 'POST', body: JSON.stringify({}) });
       const i = candidates.findIndex(x => x.id === c.id); if (i >= 0) candidates[i] = updated;
       done++;
     } catch { failed++; }
+    scoreAll(); renderAll();  // update badges live as each one finishes
   }
-  scoreAll(); renderAll();
+  hideBusy();
   setStatus(`ניתוח הושלם: ${done} הצליחו${failed ? `, ${failed} נכשלו` : ''}.`, !!failed);
 }
 
