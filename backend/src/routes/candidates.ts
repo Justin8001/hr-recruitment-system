@@ -6,7 +6,7 @@ import { findOrCreatePerson, findPerson, normalizeEmail, normalizePhone } from '
 import { getProvider } from '../providers/index.js';
 import { encrypt, decrypt } from '../lib/crypto.js';
 import { prepareCvParts, type GeminiPart } from '../lib/cv.js';
-import { analyzeCv, isConfigured as geminiConfigured } from '../lib/gemini.js';
+import { analyzeCv, draftLetter, isConfigured as geminiConfigured } from '../lib/gemini.js';
 import type { CvAttachment } from '../providers/types.js';
 
 const router = Router();
@@ -16,7 +16,10 @@ function providerForSource(source: string): string {
   return source === 'gmail' ? 'google' : 'microsoft';
 }
 
-const STAGES = ['new', 'screen', 'phone', 'interview', 'offer', 'hired', 'rejected'];
+const STAGES = [
+  'applied', 'phone', 'frontal', 'fit_client', 'cv_to_client',
+  'client_interview', 'client_approved', 'contract', 'staffed', 'rejected'
+];
 const REJECTED_BY = ['us', 'client'];
 
 // A "candidate" exposed to the frontend is an application joined with its person
@@ -49,6 +52,7 @@ function rowToCandidate(r: any) {
     jobTitle: r.job_title ?? '',
     rejectionReason: r.rejection_reason ?? '',
     rejectedBy: r.rejected_by ?? '',
+    rejectionLetterSent: !!r.rejection_letter_sent,
     notes: r.notes ?? '',
     ai: r.ai ?? null,
     hasAttachment: !!r.has_attachment,
@@ -69,7 +73,7 @@ router.post('/', asyncHandler(async (req, res) => {
   if (!name || !String(name).trim()) {
     return res.status(400).json({ error: 'נא להזין שם' });
   }
-  const finalStage = STAGES.includes(stage) ? stage : 'new';
+  const finalStage = STAGES.includes(stage) ? stage : 'applied';
 
   const client = await pool.connect();
   try {
@@ -152,6 +156,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     if (b.jobId !== undefined) setA('job_id', b.jobId ? Number(b.jobId) : null);
     if (b.rejectionReason !== undefined) setA('rejection_reason', b.rejectionReason);
     if (b.rejectedBy !== undefined) setA('rejected_by', b.rejectedBy || null);
+    if (b.rejectionLetterSent !== undefined) setA('rejection_letter_sent', !!b.rejectionLetterSent);
     if (aFields.length) {
       aValues.push(req.params.id);
       await client.query(
@@ -275,6 +280,31 @@ router.post('/:id/analyze', asyncHandler(async (req, res) => {
 
   const result = await pool.query(`${SELECT_CANDIDATE} WHERE a.id = $1`, [req.params.id]);
   res.json(rowToCandidate(result.rows[0]));
+}));
+
+// Draft a thank-you / rejection letter for the candidate (returned as text to
+// copy into the user's own mail client — no sending permissions required).
+router.post('/:id/letter', asyncHandler(async (req, res) => {
+  if (!geminiConfigured()) {
+    return res.status(400).json({ error: 'AI לא הוגדר בשרת (חסר GEMINI_API_KEY)' });
+  }
+  const kind = req.body?.kind === 'thankyou' ? 'thankyou' : 'rejection';
+  const r = await pool.query(
+    `SELECT p.name AS person_name, j.title AS job_title, a.rejection_reason
+     FROM applications a JOIN people p ON p.id = a.person_id
+     LEFT JOIN jobs j ON j.id = a.job_id
+     WHERE a.id = $1`,
+    [req.params.id]
+  );
+  const row = r.rows[0];
+  if (!row) return res.status(404).json({ error: 'מועמד לא נמצא' });
+
+  const text = await draftLetter(kind, {
+    candidateName: row.person_name,
+    jobTitle: row.job_title,
+    reason: row.rejection_reason
+  });
+  res.json({ text });
 }));
 
 router.delete('/:id', asyncHandler(async (req, res) => {

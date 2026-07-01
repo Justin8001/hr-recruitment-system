@@ -192,6 +192,7 @@
 
 <div class="tabs">
   <button class="tab active" data-tab="board" onclick="switchTab('board')">לוח מועמדים</button>
+  <button class="tab" data-tab="dashboard" onclick="switchTab('dashboard')">דשבורד</button>
   <button class="tab" data-tab="list" onclick="switchTab('list')">רשימה</button>
   <button class="tab" data-tab="jobs" onclick="switchTab('jobs')">משרות</button>
   <button class="tab" data-tab="clients" onclick="switchTab('clients')">לקוחות</button>
@@ -199,6 +200,10 @@
 </div>
 
 <div id="tab-board" class="tabview"><div class="board" id="board"></div></div>
+
+<div id="tab-dashboard" class="tabview" style="display:none">
+  <div id="dashWrap"></div>
+</div>
 
 <div id="tab-list" class="tabview" style="display:none">
   <div id="listWrap"></div>
@@ -315,7 +320,12 @@
       <select class="stage" id="mStage" style="width:100%; padding:7px" onchange="toggleRejectFields()"></select>
     </div>
     <div id="mRejectBox" style="display:none">
-      <div class="field"><label>סיבת פסילה</label><input type="text" id="mRejectReason" placeholder="לדוגמה: ציפיות שכר, חוסר ניסיון"></div>
+      <div class="field"><label>סיבת פסילה מהירה</label>
+        <select id="mRejectPreset" onchange="if(this.value){document.getElementById('mRejectReason').value=this.value}" style="width:100%; padding:7px">
+          <option value="">— בחר סיבה נפוצה —</option>
+        </select>
+      </div>
+      <div class="field"><label>סיבת פסילה (חופשי)</label><input type="text" id="mRejectReason" placeholder="לדוגמה: ציפיות שכר, אזור גיאוגרפי"></div>
       <div class="field"><label>נפסל על ידי</label>
         <select id="mRejectedBy" style="width:100%; padding:7px">
           <option value="">— לא צוין —</option>
@@ -323,6 +333,8 @@
           <option value="client">הלקוח</option>
         </select>
       </div>
+      <div class="checkrow"><input type="checkbox" id="mLetterSent"> <label for="mLetterSent" style="font-weight:400">נשלח מכתב שלילה למועמד</label></div>
+      <div class="field"><button class="btn small" onclick="draftLetterFor('rejection')">✍️ נסח מכתב שלילה (AI)</button></div>
     </div>
     <div class="field"><label>הערות</label><textarea id="mNotes"></textarea></div>
     <div id="mAiBox" style="display:none; border-top:1px solid var(--border); padding-top:12px; margin-top:4px">
@@ -332,6 +344,7 @@
       <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap">
         <button class="btn" onclick="analyzeFromModal()">🤖 נתח קו"ח</button>
         <button class="btn small" id="mShowAnalysis" style="display:none" onclick="openAnalysisModal(editingId)">📄 הצג ניתוח אחרון</button>
+        <button class="btn small" onclick="draftLetterFor('thankyou')">✍️ מכתב תודה</button>
       </div>
     </div>
     <div class="row">
@@ -350,6 +363,19 @@
   </div>
 </div>
 
+<!-- Letter modal (AI-drafted thank-you / rejection, copy to clipboard) -->
+<div class="overlay" id="letterModal">
+  <div class="modal">
+    <h3 id="letterTitle">מכתב</h3>
+    <div class="hint" style="margin-bottom:8px">נוסח מוצע — ערוך אם צריך, העתק, והדבק בתיבת המייל שלך.</div>
+    <textarea id="letterText" style="width:100%; min-height:220px; padding:10px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px"></textarea>
+    <div class="row">
+      <button class="btn primary" onclick="copyLetter()">📋 העתק</button>
+      <button class="btn" onclick="closeLetterModal()">סגור</button>
+    </div>
+  </div>
+</div>
+
 <!-- AI analysis modal (interview-prep document) -->
 <div class="overlay" id="aiModal">
   <div class="modal">
@@ -365,13 +391,26 @@
 
 <script>
 const STAGES = [
-  { id: 'new',       label: '📥 התקבל' },
-  { id: 'screen',    label: '🔎 סינון' },
-  { id: 'phone',     label: '📞 ראיון טלפוני' },
-  { id: 'interview', label: '💼 ראיון מקצועי' },
-  { id: 'offer',     label: '📄 הצעה' },
-  { id: 'hired',     label: '✅ התקבל לעבודה' },
-  { id: 'rejected',  label: '❌ נדחה' },
+  { id: 'applied',          label: '📥 הגיש קו"ח' },
+  { id: 'phone',            label: '📞 ראיון טלפוני' },
+  { id: 'frontal',          label: '🤝 ראיון פרונטלי' },
+  { id: 'fit_client',       label: '✅ מתאים ללקוח' },
+  { id: 'cv_to_client',     label: '📧 קו"ח נשלח ללקוח' },
+  { id: 'client_interview', label: '🗓️ ראיון אצל הלקוח' },
+  { id: 'client_approved',  label: '👍 אושר ע"י הלקוח' },
+  { id: 'contract',         label: '📄 חוזה' },
+  { id: 'staffed',          label: '🎯 איוש' },
+  { id: 'rejected',         label: '❌ נפסל' },
+];
+
+// Common rejection reasons offered as quick presets in the candidate modal.
+const REJECT_REASONS = [
+  'ציפיות שכר גבוהות',
+  'אזור גיאוגרפי',
+  'מחפש משרה אחרת',
+  'חוסר ניסיון / לא מתאים',
+  'לא אושר ע"י הלקוח',
+  'נפסל ע"י הלקוח בראיון',
 ];
 
 const DEFAULT_SETTINGS = {
@@ -509,18 +548,41 @@ function scoreAll() {
 }
 
 /* ---------- Rendering ---------- */
-function renderAll() { renderStats(); renderBoard(); renderList(); }
+function renderAll() { renderStats(); renderBoard(); renderList(); renderDashboard(); }
 
 function renderStats() {
   const el = document.getElementById('statsBar');
-  const active = candidates.filter(c => !['hired', 'rejected'].includes(c.stage)).length;
-  const interviews = candidates.filter(c => ['phone', 'interview'].includes(c.stage)).length;
-  const hired = candidates.filter(c => c.stage === 'hired').length;
+  const n = pred => candidates.filter(pred).length;
+  const active = n(c => !['staffed', 'rejected'].includes(c.stage));
+  const interviews = n(c => ['phone', 'frontal', 'client_interview'].includes(c.stage));
+  const staffed = n(c => c.stage === 'staffed');
   el.innerHTML = `
     <div class="stat"><div class="num">${candidates.length}</div><div class="lbl">סה"כ מועמדים</div></div>
     <div class="stat"><div class="num">${active}</div><div class="lbl">בתהליך פעיל</div></div>
     <div class="stat"><div class="num">${interviews}</div><div class="lbl">בשלבי ראיונות</div></div>
-    <div class="stat"><div class="num">${hired}</div><div class="lbl">התקבלו</div></div>`;
+    <div class="stat"><div class="num">${staffed}</div><div class="lbl">אויישו</div></div>`;
+}
+
+// Full per-stage breakdown for the dashboard tab ("real-time cut").
+function renderDashboard() {
+  const wrap = document.getElementById('dashWrap');
+  if (!wrap) return;
+  const n = pred => candidates.filter(pred).length;
+  const cards = STAGES.map(st => {
+    const count = n(c => c.stage === st.id);
+    return `<div class="stat" style="min-width:150px; cursor:pointer" onclick="switchTab('board')">
+      <div class="num">${count}</div><div class="lbl">${st.label}</div></div>`;
+  }).join('');
+  const lettersSent = n(c => c.rejectionLetterSent);
+  const byClient = n(c => c.rejectedBy === 'client');
+  const analyzed = n(c => c.ai);
+  const extra = `
+    <div class="stat" style="min-width:150px"><div class="num">${lettersSent}</div><div class="lbl">✉️ נשלחו מכתבי שלילה</div></div>
+    <div class="stat" style="min-width:150px"><div class="num">${byClient}</div><div class="lbl">נפסלו ע"י לקוח</div></div>
+    <div class="stat" style="min-width:150px"><div class="num">${analyzed}</div><div class="lbl">🤖 נותחו ב-AI</div></div>`;
+  wrap.innerHTML =
+    `<div class="panel"><h3>חתך לפי שלב</h3><div class="stats" style="margin:0">${cards}</div></div>` +
+    `<div class="panel"><h3>חתכים נוספים</h3><div class="stats" style="margin:0">${extra}</div></div>`;
 }
 
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
@@ -531,6 +593,17 @@ function scoreBadge(c) {
   let aiTag = '';
   if (c.ai && c.ai.relevant !== undefined) aiTag = c.ai.relevant ? ` · AI ${c.ai.fit}/3` : ' · AI ✗';
   return `<span class="badge ${cls}">התאמה ${c.score}/${max}${aiTag}</span>`;
+}
+
+// Compact AI-extracted facts (age / location / certifications) shown on the card.
+function aiFacts(c) {
+  if (!c.ai) return '';
+  const bits = [
+    c.ai.age ? 'גיל ' + esc(c.ai.age) : '',
+    c.ai.location ? '📍 ' + esc(c.ai.location) : '',
+    (c.ai.certifications || []).length ? '🎓 ' + esc((c.ai.certifications || []).slice(0, 3).join(', ')) : '',
+  ].filter(Boolean);
+  return bits.length ? `<div class="meta" style="color:#4a5462">${bits.join(' · ')}</div>` : '';
 }
 
 function cardHTML(c) {
@@ -547,13 +620,15 @@ function cardHTML(c) {
     <div class="name">${esc(c.name)}</div>
     <div class="meta">${esc(c.email)}${c.phone ? ' · ' + esc(c.phone) : ''}${dateStr ? ' · ' + dateStr : ''}${!c.jobNumber && c.role ? ' · ' + esc(c.role) : ''}</div>
     <div class="badges">${src}${jobBadge}${scoreBadge(c)}${crits}</div>
+    ${aiFacts(c)}
     ${rejectNote}
     ${c.subject ? `<div class="snippet"><b>${esc(c.subject)}</b> — ${esc(c.snippet)}</div>` : ''}
     <div class="actions">
       <button onclick="openEditModal('${c.id}')">✏️ ערוך</button>
       ${c.ai ? `<button onclick="openAnalysisModal('${c.id}')">📄 ניתוח</button>`
              : `<button onclick="analyzeCandidate('${c.id}')">🤖 נתח</button>`}
-      ${c.link ? `<a href="${esc(c.link)}" target="_blank">📧 פתח מייל</a>` : ''}
+      ${c.email ? `<a href="mailto:${esc(c.email)}">✉️ מייל</a>` : ''}
+      ${c.link ? `<a href="${esc(c.link)}" target="_blank" title="פתח בדפדפן">🌐</a>` : ''}
       <button class="del" onclick="delCand('${c.id}')">מחק</button>
     </div>
   </div>`;
@@ -664,14 +739,50 @@ function toggleRejectFields() {
   const show = document.getElementById('mStage').value === 'rejected';
   document.getElementById('mRejectBox').style.display = show ? '' : 'none';
 }
+function fillRejectPresets() {
+  document.getElementById('mRejectPreset').innerHTML =
+    '<option value="">— בחר סיבה נפוצה —</option>' +
+    REJECT_REASONS.map(r => `<option value="${esc(r)}">${esc(r)}</option>`).join('');
+}
+
+// Draft a thank-you / rejection letter via AI and show it for copy-paste.
+async function draftLetterFor(kind) {
+  if (!editingId) { alert('שמור את המועמד תחילה'); return; }
+  showBusy(kind === 'thankyou' ? '✍️ מנסח מכתב תודה…' : '✍️ מנסח מכתב שלילה…');
+  try {
+    const { text } = await api('/api/candidates/' + editingId + '/letter', {
+      method: 'POST', body: JSON.stringify({ kind }),
+    });
+    hideBusy();
+    showLetter(kind === 'thankyou' ? 'מכתב תודה' : 'מכתב שלילה', text);
+  } catch (err) {
+    hideBusy();
+    setStatus('שגיאה בניסוח המכתב: ' + err.message, true);
+  }
+}
+function showLetter(title, text) {
+  document.getElementById('letterTitle').textContent = '✉️ ' + title;
+  document.getElementById('letterText').value = text;
+  document.getElementById('letterModal').classList.add('show');
+}
+function closeLetterModal() { document.getElementById('letterModal').classList.remove('show'); }
+async function copyLetter() {
+  const t = document.getElementById('letterText');
+  try { await navigator.clipboard.writeText(t.value); setStatus('✓ המכתב הועתק — הדבק באאוטלוק (Cmd+V).'); }
+  catch { t.select(); document.execCommand('copy'); setStatus('✓ המכתב הועתק.'); }
+  closeLetterModal();
+}
 function openAddModal() {
   editingId = null;
   fillStageSelect();
   fillJobSelect('');
   document.getElementById('modalTitle').textContent = 'הוספת מועמד';
   ['mName','mEmail','mPhone','mRole','mReferral','mNotes','mRejectReason'].forEach(i => document.getElementById(i).value = '');
-  document.getElementById('mStage').value = 'new';
+  fillRejectPresets();
+  document.getElementById('mStage').value = 'applied';
   document.getElementById('mRejectedBy').value = '';
+  document.getElementById('mRejectPreset').value = '';
+  document.getElementById('mLetterSent').checked = false;
   toggleRejectFields();
   document.getElementById('mAiBox').style.display = 'none'; // analysis available after saving
   document.getElementById('candModal').classList.add('show');
@@ -690,8 +801,11 @@ function openEditModal(id) {
   document.getElementById('mReferral').value = c.referral || '';
   document.getElementById('mStage').value = c.stage;
   document.getElementById('mNotes').value = c.notes || '';
+  fillRejectPresets();
+  document.getElementById('mRejectPreset').value = '';
   document.getElementById('mRejectReason').value = c.rejectionReason || '';
   document.getElementById('mRejectedBy').value = c.rejectedBy || '';
+  document.getElementById('mLetterSent').checked = !!c.rejectionLetterSent;
   toggleRejectFields();
   // Analysis section is available once a candidate exists (edit mode).
   document.getElementById('mAiBox').style.display = '';
@@ -756,8 +870,16 @@ function openAnalysisModal(id) {
   const list = arr => ((arr || []).map(x => `<li>${esc(x)}</li>`).join('') || '<li style="color:var(--muted)">—</li>');
   const fitTxt = a.relevant ? `רלוונטי · רמת התאמה ${a.fit}/3` : 'לא רלוונטי למשרה';
   document.getElementById('aiModalTitle').textContent = '🤖 ניתוח קו"ח — ' + c.name;
+  const facts = [
+    a.age ? `גיל ${esc(a.age)}` : '',
+    a.location ? `📍 ${esc(a.location)}` : '',
+  ].filter(Boolean).join(' · ');
+  const certs = (a.certifications || []).length
+    ? `<div class="field"><b>הכשרות</b><br>${(a.certifications || []).map(k => `<span class="badge crit">${esc(k)}</span>`).join(' ')}</div>` : '';
   document.getElementById('aiModalBody').innerHTML = `
     <div class="field"><b>${esc(fitTxt)}</b>${c.jobNumber ? ` · משרה #${esc(c.jobNumber)} ${esc(c.jobTitle)}` : ' · ללא משרה משויכת'}</div>
+    ${facts ? `<div class="field" style="color:var(--muted)">${facts}</div>` : ''}
+    ${certs}
     <div class="field"><b>סיכום</b><br>${esc(a.summary || '')}</div>
     <div class="field"><b>יתרונות</b><ul>${list(a.strengths)}</ul></div>
     <div class="field"><b>נקודות לבירור בראיון</b><ul>${list(a.concerns)}</ul></div>
@@ -798,6 +920,7 @@ function modalPayload() {
     stage, notes: document.getElementById('mNotes').value,
     rejectionReason: stage === 'rejected' ? v('mRejectReason') : '',
     rejectedBy: stage === 'rejected' ? document.getElementById('mRejectedBy').value : '',
+    rejectionLetterSent: stage === 'rejected' ? document.getElementById('mLetterSent').checked : false,
   };
 }
 
@@ -1175,6 +1298,7 @@ function switchTab(t) {
   if (t === 'settings') { renderSettings(); loadConnections(); }
   if (t === 'jobs') renderJobs();
   if (t === 'clients') renderClients();
+  if (t === 'dashboard') renderDashboard();
 }
 
 /* ---------- Init ---------- */
