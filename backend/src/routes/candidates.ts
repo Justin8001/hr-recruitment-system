@@ -189,8 +189,11 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     const result = await client.query(`${SELECT_CANDIDATE} WHERE a.id = $1`, [req.params.id]);
     await client.query('COMMIT');
     res.json(rowToCandidate(result.rows[0]));
-  } catch (err) {
+  } catch (err: any) {
     await client.query('ROLLBACK');
+    if (err?.code === '23505') {
+      return res.status(409).json({ error: 'האימייל הזה כבר שייך למועמד אחר במערכת' });
+    }
     throw err;
   } finally {
     client.release();
@@ -232,19 +235,23 @@ router.post('/:id/analyze', asyncHandler(async (req, res) => {
       [userId, providerForSource(row.source)]
     );
     if (provider && conn.rows[0]) {
-      const tokens = await provider.refreshAccessToken(decrypt(conn.rows[0].refresh_token_enc));
-      await pool.query(
-        `UPDATE email_connections
-         SET access_token_enc = $1, expires_at = $2,
-             refresh_token_enc = COALESCE($3, refresh_token_enc)
-         WHERE user_id = $4 AND provider = $5`,
-        [
-          encrypt(tokens.accessToken), tokens.expiresAt,
-          tokens.refreshToken ? encrypt(tokens.refreshToken) : null,
-          userId, providerForSource(row.source)
-        ]
-      );
-      file = await provider.downloadCvAttachment(tokens.accessToken, row.provider_message_id);
+      try {
+        const tokens = await provider.refreshAccessToken(decrypt(conn.rows[0].refresh_token_enc));
+        await pool.query(
+          `UPDATE email_connections
+           SET access_token_enc = $1, expires_at = $2,
+               refresh_token_enc = COALESCE($3, refresh_token_enc)
+           WHERE user_id = $4 AND provider = $5`,
+          [
+            encrypt(tokens.accessToken), tokens.expiresAt,
+            tokens.refreshToken ? encrypt(tokens.refreshToken) : null,
+            userId, providerForSource(row.source)
+          ]
+        );
+        file = await provider.downloadCvAttachment(tokens.accessToken, row.provider_message_id);
+      } catch (err: any) {
+        return res.status(502).json({ error: `שגיאה בהורדת הקו"ח מהמייל: ${err.message}` });
+      }
     }
   }
 
@@ -263,15 +270,21 @@ router.post('/:id/analyze', asyncHandler(async (req, res) => {
     parts = [{ text: 'אין קובץ קו"ח — הסתמך על טקסט המייל בלבד:\n' + emailText }];
   }
 
-  // 3) Analyze and persist.
-  const analysis = await analyzeCv(
-    {
-      jobNumber: row.job_number, title: row.job_title, keywords: row.job_keywords,
-      description: row.job_description, clientName: row.client_name,
-      clientLookingFor: row.client_looking_for
-    },
-    parts
-  );
+  // 3) Analyze and persist. Surface Gemini failures with their message
+  // (timeout, quota, bad key) instead of a generic 500.
+  let analysis;
+  try {
+    analysis = await analyzeCv(
+      {
+        jobNumber: row.job_number, title: row.job_title, keywords: row.job_keywords,
+        description: row.job_description, clientName: row.client_name,
+        clientLookingFor: row.client_looking_for
+      },
+      parts
+    );
+  } catch (err: any) {
+    return res.status(502).json({ error: err.message });
+  }
   const updated = await pool.query(
     `UPDATE applications SET ai = $1, analyzed_at = now() WHERE id = $2 RETURNING id`,
     [analysis, req.params.id]
@@ -299,12 +312,16 @@ router.post('/:id/letter', asyncHandler(async (req, res) => {
   const row = r.rows[0];
   if (!row) return res.status(404).json({ error: 'מועמד לא נמצא' });
 
-  const text = await draftLetter(kind, {
-    candidateName: row.person_name,
-    jobTitle: row.job_title,
-    reason: row.rejection_reason
-  });
-  res.json({ text });
+  try {
+    const text = await draftLetter(kind, {
+      candidateName: row.person_name,
+      jobTitle: row.job_title,
+      reason: row.rejection_reason
+    });
+    res.json({ text });
+  } catch (err: any) {
+    res.status(502).json({ error: err.message });
+  }
 }));
 
 router.delete('/:id', asyncHandler(async (req, res) => {

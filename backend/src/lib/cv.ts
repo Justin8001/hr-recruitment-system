@@ -10,7 +10,6 @@ const INLINE_MIME = new Set([
   'application/pdf',
   'image/png',
   'image/jpeg',
-  'image/jpg',
   'image/webp'
 ]);
 
@@ -25,7 +24,8 @@ export async function prepareCvParts(
 ): Promise<{ parts: GeminiPart[]; sourceNote: string } | null> {
   if (!file || !file.dataBase64) return null;
 
-  const mime = (file.mimeType || '').toLowerCase();
+  // Normalize provider quirks: 'image/jpg' is not a valid IANA type (Gemini rejects it).
+  const mime = (file.mimeType || '').toLowerCase().replace('image/jpg', 'image/jpeg');
   if (INLINE_MIME.has(mime)) {
     return {
       parts: [{ inline_data: { mime_type: mime, data: file.dataBase64 } }],

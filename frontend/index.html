@@ -857,6 +857,10 @@ async function analyzeFromModal() {
   let file = null;
   if (input.files && input.files[0]) {
     const f = input.files[0];
+    if (f.size > 15 * 1024 * 1024) {
+      alert('הקובץ גדול מדי (מעל 15MB). נסה PDF קטן יותר.');
+      return;
+    }
     file = { filename: f.name, mimeType: f.type, dataBase64: await fileToBase64(f) };
   }
   closeModal();
@@ -955,9 +959,14 @@ async function createCandidateWithDedup(payload) {
     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + getToken() },
     body: JSON.stringify(payload),
   });
+  if (res.status === 401) {
+    logout();
+    throw new Error('פג תוקף החיבור — יש להתחבר מחדש');
+  }
   if (res.status === 409) {
     const body = await res.json();
     const dup = body.duplicate;
+    if (!dup) throw new Error(body.error || 'מועמד קיים');
     const existingJobs = (dup.applications || [])
       .map(a => a.jobNumber ? `#${a.jobNumber} ${a.jobTitle}` : (a.role || a.stage)).filter(Boolean).join(', ');
     const ok = confirm(

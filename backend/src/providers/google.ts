@@ -111,9 +111,8 @@ async function searchMessages(accessToken: string, settings: ScanSettings): Prom
   const messages: any[] = listData.messages || [];
   const out: ScannedMessage[] = [];
   for (const m of messages) {
-    const detUrl =
-      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}` +
-      '?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date';
+    // format=full (not metadata): we need payload.parts to detect CV attachments.
+    const detUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=full`;
     const detRes = await fetch(detUrl, { headers: auth });
     if (!detRes.ok) continue;
     const det = await detRes.json().catch(() => ({}));

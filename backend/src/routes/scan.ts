@@ -60,23 +60,32 @@ router.post('/', asyncHandler(async (req, res) => {
       const messages = await provider.searchMessages(tokens.accessToken, settings);
       const source = sourceFor(conn.provider);
       for (const m of messages) {
-        // Reuse an existing person (dedup by email) or create one, then record
-        // the inbound email as an application. ext_key keeps re-imports idempotent.
+        // Already imported? Just backfill attachment metadata — and skip person
+        // creation entirely (otherwise email-less senders would leak a new
+        // person row on every scan).
+        const upd = await pool.query(
+          `UPDATE applications
+           SET provider_message_id = COALESCE(provider_message_id, $1),
+               has_attachment = $2
+           WHERE ext_key = $3`,
+          [m.providerMessageId, m.hasAttachment, m.extKey]
+        );
+        if (upd.rowCount) continue;
+
+        // New message: reuse an existing person (dedup by email) or create one,
+        // then record the inbound email as an application. ON CONFLICT guards
+        // against a concurrent scan inserting the same ext_key.
         const person = await findOrCreatePerson(pool, { name: m.name, email: m.email });
         const ins = await pool.query(
           `INSERT INTO applications
              (person_id, source, ext_key, subject, snippet, email_date, link,
               provider_message_id, has_attachment)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-           ON CONFLICT (ext_key) DO UPDATE SET
-             provider_message_id = COALESCE(applications.provider_message_id, EXCLUDED.provider_message_id),
-             has_attachment = EXCLUDED.has_attachment
-           RETURNING (xmax = 0) AS inserted`,
+           ON CONFLICT (ext_key) DO NOTHING`,
           [person.id, source, m.extKey, m.subject, m.snippet, m.date || null, m.link,
            m.providerMessageId, m.hasAttachment]
         );
-        // With DO UPDATE, rowCount is always 1; xmax = 0 marks a true insert (vs. a backfill).
-        if (ins.rows[0]?.inserted) added += 1;
+        added += ins.rowCount ?? 0;
       }
     } catch (err: any) {
       errors.push(`${conn.provider}: ${err.message}`);

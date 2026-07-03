@@ -51,16 +51,31 @@ export async function findOrCreatePerson(db: Db, input: PersonInput): Promise<an
 
   const existing = await findPerson(db, email, phone);
   if (existing) {
-    const r = await db.query(
-      `UPDATE people
-         SET email     = COALESCE(NULLIF(email, ''), $2),
-             phone     = COALESCE(NULLIF(phone, ''), $3),
-             referral  = COALESCE(NULLIF(referral, ''), $4)
-       WHERE id = $1
-       RETURNING *`,
-      [existing.id, email, phone, input.referral ?? null]
-    );
-    return r.rows[0];
+    try {
+      const r = await db.query(
+        `UPDATE people
+           SET email     = COALESCE(NULLIF(email, ''), $2),
+               phone     = COALESCE(NULLIF(phone, ''), $3),
+               referral  = COALESCE(NULLIF(referral, ''), $4)
+         WHERE id = $1
+         RETURNING *`,
+        [existing.id, email, phone, input.referral ?? null]
+      );
+      return r.rows[0];
+    } catch (err: any) {
+      // Matched by phone but the email belongs to a different person — keep
+      // the match and just skip the email backfill.
+      if (err?.code !== '23505') throw err;
+      const r = await db.query(
+        `UPDATE people
+           SET phone     = COALESCE(NULLIF(phone, ''), $2),
+               referral  = COALESCE(NULLIF(referral, ''), $3)
+         WHERE id = $1
+         RETURNING *`,
+        [existing.id, phone, input.referral ?? null]
+      );
+      return r.rows[0];
+    }
   }
 
   const r = await db.query(
