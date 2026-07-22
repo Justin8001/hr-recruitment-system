@@ -181,6 +181,7 @@
     <button class="btn primary" id="btnScan" onclick="scanEmails()">🔍 סרוק מיילים</button>
     <button class="btn" id="btnBatchAI" onclick="analyzeNew()" title="נתח קו&quot;ח של מועמדים חדשים עם קובץ מצורף">🤖 נתח קו"ח חדשים</button>
     <button class="btn primary" onclick="openAddModal()">＋ הוסף מועמד</button>
+    <button class="btn" onclick="openBulkImportModal()" title="ייבוא הרבה קבצי קו&quot;ח בבת אחת (למשל אחרי יצוא צ'אט וואטסאפ)">📥 ייבוא מרובה</button>
     <span style="color:var(--muted);font-size:12px" id="whoami"></span>
     <button class="btn small" onclick="logout()">יציאה</button>
   </div>
@@ -384,6 +385,28 @@
     <div class="row">
       <button class="btn" onclick="closeAiModal()">סגור</button>
     </div>
+  </div>
+</div>
+
+<!-- Bulk import modal (many CV files at once, e.g. exported from a WhatsApp chat) -->
+<div class="overlay" id="bulkModal">
+  <div class="modal" style="max-width:560px">
+    <h3>📥 ייבוא מרובה של קורות חיים</h3>
+    <div class="hint" style="margin-bottom:8px">
+      בחר משרה, ובחר את כל קבצי הקו"ח בבת אחת (PDF / Word / תמונה — גם אם הגיעו מוואטסאפ עם שמות קבצים אקראיים).
+      לכל קובץ ייווצר מועמד, וה-AI ינתח את הקובץ וימלא ממנו שם ופרטי קשר אוטומטית.
+    </div>
+    <div class="field"><label>משרה *</label>
+      <select id="bulkJob" style="width:100%; padding:7px"></select>
+    </div>
+    <div class="field"><label>קבצים *</label>
+      <input type="file" id="bulkFiles" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" multiple>
+    </div>
+    <div class="row">
+      <button class="btn primary" id="bulkStartBtn" onclick="startBulkImport()">🚀 התחל ייבוא</button>
+      <button class="btn" onclick="closeBulkModal()">סגור</button>
+    </div>
+    <div id="bulkProgress" style="margin-top:12px; max-height:280px; overflow:auto; font-size:12px; line-height:1.8"></div>
   </div>
 </div>
 
@@ -912,6 +935,102 @@ async function analyzeNew() {
   }
   hideBusy();
   setStatus(`ניתוח הושלם: ${done} הצליחו${failed ? `, ${failed} נכשלו` : ''}.`, !!failed);
+}
+
+/* ---------- Bulk import (many CV files at once) ---------- */
+function openBulkImportModal() {
+  const open = jobs.filter(j => j.status === 'open');
+  document.getElementById('bulkJob').innerHTML =
+    '<option value="">— בחר משרה —</option>' +
+    open.map(j => `<option value="${j.id}">#${esc(j.jobNumber)} ${esc(j.title)}${j.clientName ? ' · ' + esc(j.clientName) : ''}</option>`).join('');
+  document.getElementById('bulkFiles').value = '';
+  document.getElementById('bulkProgress').innerHTML = '';
+  document.getElementById('bulkModal').classList.add('show');
+}
+function closeBulkModal() { document.getElementById('bulkModal').classList.remove('show'); }
+
+// WhatsApp/phone exports name files like "IMG-20250203-WA0007.pdf" — strip that noise
+// so the placeholder (pre-AI-analysis) name is at least readable in the board.
+function cleanFileName(fn) {
+  const base = fn.replace(/\.[^.]+$/, '');
+  const stripped = base.replace(/^(IMG|VID|DOC|PTT|WA)[-_ ]?\d*/i, '').replace(/[_-]+/g, ' ').trim();
+  return stripped || ('קובץ: ' + fn);
+}
+
+// Create the placeholder application (no email/phone yet, so dedup never fires here).
+// If it somehow 409s anyway, attach the application to the existing person instead of blocking.
+async function bulkCreateCandidate(name, jobId) {
+  const post = body => fetch(API_BASE + '/api/candidates', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + getToken() },
+    body: JSON.stringify(body),
+  });
+  let res = await post({ name, jobId, stage: 'applied' });
+  if (res.status === 409) {
+    const body = await res.json();
+    const personId = body.duplicate?.person?.id;
+    if (!personId) throw new Error(body.error || 'מועמד קיים');
+    res = await post({ name, jobId, stage: 'applied', personId });
+  }
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'שגיאה ביצירת מועמד');
+  return res.json();
+}
+
+async function startBulkImport() {
+  const jobId = document.getElementById('bulkJob').value;
+  if (!jobId) { alert('נא לבחור משרה'); return; }
+  const files = Array.from(document.getElementById('bulkFiles').files || []);
+  if (!files.length) { alert('נא לבחור קבצים'); return; }
+  if (!confirm(`לייבא ולנתח ${files.length} קבצים מול המשרה שנבחרה? הפעולה כרוכה בעלות שימוש ב-API ועשויה לקחת כמה דקות.`)) return;
+
+  document.getElementById('bulkStartBtn').disabled = true;
+  const progress = document.getElementById('bulkProgress');
+  progress.innerHTML = files.map((f, i) => `<div id="bulkRow${i}">⏳ ${esc(f.name)}</div>`).join('');
+  let ok = 0, fail = 0;
+
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i];
+    const row = document.getElementById('bulkRow' + i);
+    row.textContent = `🔄 מעבד (${i + 1}/${files.length}): ${f.name}`;
+    try {
+      if (f.size > 15 * 1024 * 1024) throw new Error('קובץ גדול מדי (מעל 15MB)');
+      const created = await bulkCreateCandidate(cleanFileName(f.name), jobId);
+      const dataBase64 = await fileToBase64(f);
+      const analyzed = await api('/api/candidates/' + created.id + '/analyze', {
+        method: 'POST',
+        body: JSON.stringify({ file: { filename: f.name, mimeType: f.type, dataBase64 } }),
+      });
+
+      // The AI read the actual name/email/phone off the CV — use it to replace
+      // the filename-derived placeholder, best-effort (a 409 here just means the
+      // email already belongs to someone else; keep the analysis, skip the rename).
+      const a = analyzed.ai || {};
+      const patch = {};
+      if (a.candidateName) patch.name = a.candidateName;
+      if (a.candidateEmail) patch.email = a.candidateEmail;
+      if (a.candidatePhone) patch.phone = a.candidatePhone;
+      let finalRow = analyzed;
+      if (Object.keys(patch).length) {
+        try {
+          finalRow = await api('/api/candidates/' + created.id, { method: 'PATCH', body: JSON.stringify(patch) });
+        } catch { /* keep placeholder name/contact, analysis is still saved */ }
+      }
+
+      const i2 = candidates.findIndex(x => x.id === finalRow.id);
+      if (i2 >= 0) candidates[i2] = finalRow; else candidates.push(finalRow);
+
+      const fitTxt = finalRow.ai ? (finalRow.ai.relevant ? `✅ מתאים (${finalRow.ai.fit}/3)` : '⚠️ לא רלוונטי') : '';
+      row.textContent = `✔ ${finalRow.name} — ${fitTxt}`;
+      ok++;
+    } catch (err) {
+      row.textContent = `✖ ${f.name}: ${err.message}`;
+      fail++;
+    }
+    scoreAll(); renderAll();
+  }
+
+  document.getElementById('bulkStartBtn').disabled = false;
+  setStatus(`ייבוא הושלם: ${ok} הצליחו${fail ? `, ${fail} נכשלו` : ''}.`, !!fail);
 }
 
 function modalPayload() {

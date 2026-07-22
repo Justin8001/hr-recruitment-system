@@ -22,6 +22,9 @@ export interface CvAnalysis {
   certifications: string[];    // הכשרות: ענף בנייה, הדרכה, קרינה...
   age: number | null;          // computed from birth date / army year, null if unknown
   location: string;            // city / town of residence
+  candidateName: string;       // full name as extracted from the CV text (for bulk-import auto-fill)
+  candidateEmail: string;      // email as extracted from the CV text, '' if none found
+  candidatePhone: string;      // phone as extracted from the CV text, '' if none found
 }
 
 export function isConfigured(): boolean {
@@ -45,11 +48,14 @@ const RESPONSE_SCHEMA = {
     matchedKeywords: { type: 'array', items: { type: 'string' } },
     certifications: { type: 'array', items: { type: 'string' } },
     age: { type: 'integer', nullable: true },
-    location: { type: 'string' }
+    location: { type: 'string' },
+    candidateName: { type: 'string' },
+    candidateEmail: { type: 'string' },
+    candidatePhone: { type: 'string' }
   },
   required: [
     'relevant', 'fit', 'summary', 'strengths', 'concerns', 'interviewQuestions',
-    'matchedKeywords', 'certifications', 'location'
+    'matchedKeywords', 'certifications', 'location', 'candidateName'
   ]
 };
 
@@ -77,7 +83,10 @@ function buildPrompt(job: JobContext): string {
     '- matchedKeywords: אילו ממילות המפתח של המשרה מופיעות בקורות החיים.',
     '- certifications: רשימת ההכשרות/הסמכות של המועמד (למשל: ענף בנייה, הדרכה, קרינה, עבודה בגובה).',
     '- age: הגיל המחושב של המועמד. חשב לפי תאריך לידה אם צוין, אחרת אמוד לפי שנת שירות צבאי/לימודים. אם אי אפשר להעריך — null.',
-    '- location: עיר/יישוב המגורים של המועמד (שם המקום בלבד).'
+    '- location: עיר/יישוב המגורים של המועמד (שם המקום בלבד).',
+    '- candidateName: שם המועמד/ת המלא כפי שמופיע בקורות החיים עצמם (חשוב מאוד — זה משמש ליצירת רשומת המועמד). אם באמת אי אפשר לזהות שם, החזר מחרוזת ריקה.',
+    '- candidateEmail: כתובת האימייל של המועמד כפי שמופיעה בקורות החיים. מחרוזת ריקה אם אין.',
+    '- candidatePhone: מספר הטלפון של המועמד כפי שמופיע בקורות החיים. מחרוזת ריקה אם אין.'
   );
   return lines.join('\n');
 }
@@ -142,7 +151,10 @@ export async function analyzeCv(job: JobContext, cvParts: GeminiPart[]): Promise
     matchedKeywords: Array.isArray(parsed.matchedKeywords) ? parsed.matchedKeywords.map(String) : [],
     certifications: Array.isArray(parsed.certifications) ? parsed.certifications.map(String) : [],
     age: (parsed.age === null || parsed.age === undefined || Number.isNaN(Number(parsed.age))) ? null : Number(parsed.age),
-    location: String(parsed.location || '')
+    location: String(parsed.location || ''),
+    candidateName: String(parsed.candidateName || ''),
+    candidateEmail: String(parsed.candidateEmail || ''),
+    candidatePhone: String(parsed.candidatePhone || '')
   };
 }
 
