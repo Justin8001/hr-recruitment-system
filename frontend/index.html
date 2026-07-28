@@ -564,7 +564,17 @@ async function loadData() {
 function scoreAll() {
   const crits = (settings.criteria || []).filter(c => c.keywords && c.keywords.trim());
   for (const c of candidates) {
-    const text = ((c.subject || '') + ' ' + (c.snippet || '') + ' ' + (c.notes || '')).toLowerCase();
+    // Criteria used to look only at the email, so a CV imported as a file — which
+    // has no subject or snippet — could never score above 0 no matter how good it
+    // was. Search what the AI actually read out of the CV as well.
+    const a = c.ai || {};
+    const text = [
+      c.subject, c.snippet, c.notes, c.role, c.jobTitle,
+      a.summary, a.profession, a.location,
+      (a.strengths || []).join(' '),
+      (a.matchedKeywords || []).join(' '),
+      (a.certifications || []).join(' ')
+    ].filter(Boolean).join(' ').toLowerCase();
     c.matched = [];
     for (const cr of crits) {
       const kws = cr.keywords.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
@@ -640,7 +650,7 @@ function cardHTML(c) {
   const crits = (c.matched || []).map(m => `<span class="badge crit">${esc(m)}</span>`).join('');
   const jobBadge = c.jobNumber
     ? `<span class="badge job">#${esc(c.jobNumber)} ${esc(c.jobTitle)}</span>` : '';
-  const dateStr = c.date ? new Date(c.date).toLocaleDateString('he-IL') : '';
+  const dateStr = displayDate(c);
   const rejectNote = (c.stage === 'rejected' && (c.rejectionReason || c.rejectedBy))
     ? `<div class="snippet" style="color:var(--red)">⛔ ${esc(c.rejectionReason || '')}${c.rejectedBy ? ' · ' + (c.rejectedBy === 'client' ? 'נפסל ע"י הלקוח' : 'פסילה פנימית') : ''}</div>` : '';
   return `<div class="card" draggable="true" data-id="${c.id}">
@@ -661,6 +671,15 @@ function cardHTML(c) {
   </div>`;
 }
 
+// Candidates imported as files have no email date — fall back to when they were
+// added, marked with ↥ so it's clear it's an upload date, not a mail date.
+function displayDate(c) {
+  if (c.date) return new Date(c.date).toLocaleDateString('he-IL');
+  if (c.addedAt) return '↥ ' + new Date(c.addedAt).toLocaleDateString('he-IL');
+  return '';
+}
+function sortDate(c) { return c.date || c.addedAt || ''; }
+
 // Ranking shown to the user. The AI's verdict leads: the criteria score is
 // derived from the email text, which imported CVs simply don't have — sorting on
 // it alone buried every AI-rated 3/3 candidate at the bottom of the board.
@@ -671,7 +690,7 @@ function aiRank(c) {
 function byRelevance(a, b) {
   return (aiRank(b) - aiRank(a))
     || (b.score - a.score)
-    || String(b.date).localeCompare(String(a.date));
+    || sortDate(b).localeCompare(sortDate(a));
 }
 
 function renderBoard() {
@@ -736,7 +755,7 @@ function renderList() {
       <td><b>${esc(c.name)}</b><br><span style="color:var(--muted);font-size:11px">${esc(c.email)}</span></td>
       <td>${esc(c.subject)}</td>
       <td>${c.source === 'gmail' ? 'Gmail' : c.source === 'outlook' ? 'Outlook' : 'ידני'}</td>
-      <td>${c.date ? new Date(c.date).toLocaleDateString('he-IL') : ''}</td>
+      <td>${displayDate(c)}</td>
       <td>${scoreBadge(c)}</td>
       <td><select class="stage" onchange="setStage('${c.id}', this.value)">${opts(c.stage)}</select></td>
       <td>${c.link ? `<a href="${esc(c.link)}" target="_blank">📧</a>` : ''}
