@@ -661,11 +661,23 @@ function cardHTML(c) {
   </div>`;
 }
 
+// Ranking shown to the user. The AI's verdict leads: the criteria score is
+// derived from the email text, which imported CVs simply don't have — sorting on
+// it alone buried every AI-rated 3/3 candidate at the bottom of the board.
+function aiRank(c) {
+  if (!c.ai) return -1;                    // not analyzed yet — below anything judged
+  return c.ai.relevant ? (c.ai.fit || 1) : 0;
+}
+function byRelevance(a, b) {
+  return (aiRank(b) - aiRank(a))
+    || (b.score - a.score)
+    || String(b.date).localeCompare(String(a.date));
+}
+
 function renderBoard() {
   const board = document.getElementById('board');
   board.innerHTML = STAGES.map(st => {
-    const items = candidates.filter(c => c.stage === st.id)
-      .sort((a, b) => (b.score - a.score) || String(b.date).localeCompare(String(a.date)));
+    const items = candidates.filter(c => c.stage === st.id).sort(byRelevance);
     return `<div class="col" data-stage="${st.id}">
       <h3>${st.label} <span class="count">${items.length}</span></h3>
       ${items.map(cardHTML).join('') || ''}
@@ -679,7 +691,7 @@ function renderList() {
   if (!candidates.length) { wrap.innerHTML = '<div class="empty">אין מועמדים עדיין. לחץ "הוסף מועמד" כדי להתחיל.</div>'; return; }
   const opts = id => STAGES.map(s => `<option value="${s.id}" ${s.id === id ? 'selected' : ''}>${s.label}</option>`).join('');
   const rows = [...candidates]
-    .sort((a, b) => (b.score - a.score) || String(b.date).localeCompare(String(a.date)))
+    .sort(byRelevance)
     .map(c => `<tr>
       <td><b>${esc(c.name)}</b><br><span style="color:var(--muted);font-size:11px">${esc(c.email)}</span></td>
       <td>${esc(c.subject)}</td>
