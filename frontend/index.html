@@ -657,7 +657,7 @@ function cardHTML(c) {
   return `<div class="card" draggable="true" data-id="${c.id}">
     <div class="name">${esc(c.name)}</div>
     <div class="meta">${esc(c.email)}${c.phone ? ' · ' + esc(c.phone) : ''}${dateStr ? ' · ' + dateStr : ''}${!c.jobNumber && c.role ? ' · ' + esc(c.role) : ''}</div>
-    <div class="badges">${src}${jobBadge}${scoreBadge(c)}${crits}</div>
+    <div class="badges">${src}${dupBadge(c)}${jobBadge}${scoreBadge(c)}${crits}</div>
     ${aiFacts(c)}
     ${rejectNote}
     ${c.subject ? `<div class="snippet"><b>${esc(c.subject)}</b> — ${esc(c.snippet)}</div>` : ''}
@@ -670,6 +670,70 @@ function cardHTML(c) {
       <button class="del" onclick="delCand('${c.id}')">מחק</button>
     </div>
   </div>`;
+}
+
+// Importing the same person from several files created a separate record per
+// file, so one human can appear many times. Nothing is deleted — the views just
+// show one row per person and mark how many copies exist behind it.
+let mergeDuplicates = true;
+
+// Every identity a record carries. Copies of one person rarely share all of
+// them — only one copy could take the email, since that column is unique — so
+// records are linked on *any* shared key, not on a single chosen one.
+function dupKeys(c) {
+  const keys = [];
+  const email = (c.email || '').trim().toLowerCase();
+  if (email) keys.push('e:' + email);
+  const phone = (c.phone || '').replace(/\D/g, '');
+  if (phone.length >= 7) keys.push('p:' + phone);
+  const name = (c.name || '').trim().toLowerCase();
+  if (name) keys.push('n:' + name);
+  return keys.length ? keys : ['id:' + c.id];
+}
+
+// Which copy to show: the one carrying the most work — furthest in the pipeline,
+// then analyzed, then with contact details.
+function copyWeight(c) {
+  let w = 0;
+  if (c.stage && c.stage !== 'applied' && c.stage !== 'rejected') w += 8;
+  if (c.ai) w += 4;
+  if (c.email) w += 2;
+  if (c.jobNumber) w += 1;
+  return w;
+}
+
+function collapseDuplicates(list) {
+  if (!mergeDuplicates) return list;
+  // Union records that share any identity, so A(name+email) — B(name only) —
+  // C(name+phone) all end up as one person.
+  const parent = list.map((_, i) => i);
+  const find = i => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
+  const union = (a, b) => { a = find(a); b = find(b); if (a !== b) parent[b] = a; };
+  const seen = new Map();
+  list.forEach((c, i) => {
+    for (const k of dupKeys(c)) {
+      if (seen.has(k)) union(seen.get(k), i);
+      else seen.set(k, i);
+    }
+  });
+
+  const groups = new Map();
+  list.forEach((c, i) => {
+    const root = find(i);
+    if (!groups.has(root)) groups.set(root, []);
+    groups.get(root).push(c);
+  });
+  return [...groups.values()].map(items => {
+    if (items.length === 1) return items[0];
+    const best = items.reduce((a, b) => (copyWeight(b) > copyWeight(a) ? b : a));
+    return { ...best, dupCount: items.length };
+  });
+}
+
+function dupBadge(c) {
+  return c.dupCount > 1
+    ? `<span class="badge" style="background:var(--amber-soft); color:var(--amber)" title="אותו מועמד הועלה ${c.dupCount} פעמים — מוצג פעם אחת">×${c.dupCount}</span>`
+    : '';
 }
 
 // Candidates imported as files have no email date — fall back to when they were
@@ -697,7 +761,7 @@ function byRelevance(a, b) {
 function renderBoard() {
   const board = document.getElementById('board');
   board.innerHTML = STAGES.map(st => {
-    const items = candidates.filter(c => c.stage === st.id).sort(byRelevance);
+    const items = collapseDuplicates(candidates.filter(c => c.stage === st.id)).sort(byRelevance);
     return `<div class="col" data-stage="${st.id}">
       <h3>${st.label} <span class="count">${items.length}</span></h3>
       ${items.map(cardHTML).join('') || ''}
@@ -713,6 +777,11 @@ let listFilters = { q: '', source: '', analyzed: '' };
 function setListFilter(key, value) {
   listFilters[key] = value;
   renderList();
+}
+
+function setMergeDuplicates(on) {
+  mergeDuplicates = on;
+  renderAll();
 }
 
 function matchesListFilters(c) {
@@ -731,7 +800,9 @@ function renderList() {
   const wrap = document.getElementById('listWrap');
   if (!candidates.length) { wrap.innerHTML = '<div class="empty">אין מועמדים עדיין. לחץ "הוסף מועמד" כדי להתחיל.</div>'; return; }
   const opts = id => STAGES.map(s => `<option value="${s.id}" ${s.id === id ? 'selected' : ''}>${s.label}</option>`).join('');
-  const shown = candidates.filter(matchesListFilters);
+  const matching = candidates.filter(matchesListFilters);
+  const shown = collapseDuplicates(matching);
+  const hidden = matching.length - shown.length;
   const sel = (v, cur) => v === cur ? 'selected' : '';
   const filterBar = `<div class="panel" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:10px">
     <input type="text" id="listSearch" placeholder="🔍 חיפוש שם / מייל / טלפון / תפקיד"
@@ -748,12 +819,16 @@ function renderList() {
       <option value="yes" ${sel('yes', listFilters.analyzed)}>🤖 נותחו ב-AI</option>
       <option value="no" ${sel('no', listFilters.analyzed)}>ללא ניתוח</option>
     </select>
-    <span style="color:var(--muted); font-size:12px">מוצגים ${shown.length} מתוך ${candidates.length}</span>
+    <label style="font-size:12px; display:flex; align-items:center; gap:4px; cursor:pointer">
+      <input type="checkbox" ${mergeDuplicates ? 'checked' : ''} onchange="setMergeDuplicates(this.checked)">
+      אחד כפילויות
+    </label>
+    <span style="color:var(--muted); font-size:12px">מוצגים ${shown.length} מתוך ${candidates.length}${hidden ? ` · ${hidden} כפילויות אוחדו` : ''}</span>
   </div>`;
   const rows = shown
     .sort(byRelevance)
     .map(c => `<tr>
-      <td><b>${esc(c.name)}</b><br><span style="color:var(--muted);font-size:11px">${esc(c.email)}</span></td>
+      <td><b>${esc(c.name)}</b> ${dupBadge(c)}<br><span style="color:var(--muted);font-size:11px">${esc(c.email)}</span></td>
       <td>${esc(c.subject)}</td>
       <td>${c.source === 'gmail' ? 'Gmail' : c.source === 'outlook' ? 'Outlook' : 'ידני'}</td>
       <td>${displayDate(c)}</td>
