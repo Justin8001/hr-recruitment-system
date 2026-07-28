@@ -686,11 +686,51 @@ function renderBoard() {
   attachDnD();
 }
 
+// List filters. Kept in module state so re-renders (e.g. a stage change) don't
+// throw the user back to the full 400-row table.
+let listFilters = { q: '', source: '', analyzed: '' };
+
+function setListFilter(key, value) {
+  listFilters[key] = value;
+  renderList();
+}
+
+function matchesListFilters(c) {
+  const f = listFilters;
+  if (f.source && c.source !== f.source) return false;
+  if (f.analyzed === 'yes' && !c.ai) return false;
+  if (f.analyzed === 'no' && c.ai) return false;
+  if (f.q) {
+    const hay = [c.name, c.email, c.phone, c.subject, c.role, c.jobTitle].join(' ').toLowerCase();
+    if (!hay.includes(f.q.toLowerCase())) return false;
+  }
+  return true;
+}
+
 function renderList() {
   const wrap = document.getElementById('listWrap');
   if (!candidates.length) { wrap.innerHTML = '<div class="empty">אין מועמדים עדיין. לחץ "הוסף מועמד" כדי להתחיל.</div>'; return; }
   const opts = id => STAGES.map(s => `<option value="${s.id}" ${s.id === id ? 'selected' : ''}>${s.label}</option>`).join('');
-  const rows = [...candidates]
+  const shown = candidates.filter(matchesListFilters);
+  const sel = (v, cur) => v === cur ? 'selected' : '';
+  const filterBar = `<div class="panel" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:10px">
+    <input type="text" id="listSearch" placeholder="🔍 חיפוש שם / מייל / טלפון / תפקיד"
+           value="${esc(listFilters.q)}" style="flex:1; min-width:200px; padding:7px"
+           oninput="setListFilter('q', this.value)">
+    <select style="padding:7px" onchange="setListFilter('source', this.value)">
+      <option value="" ${sel('', listFilters.source)}>כל המקורות</option>
+      <option value="manual" ${sel('manual', listFilters.source)}>ידני / ייבוא קבצים</option>
+      <option value="outlook" ${sel('outlook', listFilters.source)}>Outlook</option>
+      <option value="gmail" ${sel('gmail', listFilters.source)}>Gmail</option>
+    </select>
+    <select style="padding:7px" onchange="setListFilter('analyzed', this.value)">
+      <option value="" ${sel('', listFilters.analyzed)}>נותחו ולא נותחו</option>
+      <option value="yes" ${sel('yes', listFilters.analyzed)}>🤖 נותחו ב-AI</option>
+      <option value="no" ${sel('no', listFilters.analyzed)}>ללא ניתוח</option>
+    </select>
+    <span style="color:var(--muted); font-size:12px">מוצגים ${shown.length} מתוך ${candidates.length}</span>
+  </div>`;
+  const rows = shown
     .sort(byRelevance)
     .map(c => `<tr>
       <td><b>${esc(c.name)}</b><br><span style="color:var(--muted);font-size:11px">${esc(c.email)}</span></td>
@@ -702,9 +742,18 @@ function renderList() {
       <td>${c.link ? `<a href="${esc(c.link)}" target="_blank">📧</a>` : ''}
           <button class="btn small" onclick="openEditModal('${c.id}')">✏️</button></td>
     </tr>`).join('');
-  wrap.innerHTML = `<table><thead><tr>
-    <th>מועמד</th><th>נושא</th><th>מקור</th><th>תאריך</th><th>התאמה</th><th>שלב</th><th></th>
-  </tr></thead><tbody>${rows}</tbody></table>`;
+  const table = shown.length
+    ? `<table><thead><tr>
+        <th>מועמד</th><th>נושא</th><th>מקור</th><th>תאריך</th><th>התאמה</th><th>שלב</th><th></th>
+      </tr></thead><tbody>${rows}</tbody></table>`
+    : '<div class="empty">אין מועמדים התואמים לסינון.</div>';
+  wrap.innerHTML = filterBar + table;
+  // Typing re-renders the table, so put the caret back where the user left it.
+  const box = document.getElementById('listSearch');
+  if (box && document.activeElement !== box && listFilters.q) {
+    box.focus();
+    box.setSelectionRange(box.value.length, box.value.length);
+  }
 }
 
 /* ---------- Drag & drop ---------- */
