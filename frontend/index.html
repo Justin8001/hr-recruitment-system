@@ -182,6 +182,7 @@
     <button class="btn" id="btnBatchAI" onclick="analyzeNew()" title="נתח קו&quot;ח של מועמדים חדשים עם קובץ מצורף">🤖 נתח קו"ח חדשים</button>
     <button class="btn primary" onclick="openAddModal()">＋ הוסף מועמד</button>
     <button class="btn" onclick="openBulkImportModal()" title="ייבוא הרבה קבצי קו&quot;ח בבת אחת (למשל אחרי יצוא צ'אט וואטסאפ)">📥 ייבוא מרובה</button>
+    <button class="btn" onclick="repairNames()" title="תקן שמות שנשארו כשם הקובץ, לפי מה שה-AI קרא מקורות החיים">🩹 תקן שמות</button>
     <span style="color:var(--muted);font-size:12px" id="whoami"></span>
     <button class="btn small" onclick="logout()">יציאה</button>
   </div>
@@ -1034,6 +1035,41 @@ async function analyzeNew() {
     `${failed ? `, ${failed} נכשלו` : ''}.`,
     !!failed
   );
+}
+
+// Repair names left as filenames (or as the sending mailbox) using the name the
+// AI already read out of the CV. Shows exactly what will change before touching
+// anything — this rewrites existing candidate records.
+async function repairNames() {
+  showBusy('בודק אילו שמות ניתן לתקן…');
+  let info;
+  try {
+    info = await api('/api/candidates/repairable-names');
+  } catch (err) {
+    hideBusy();
+    setStatus('שגיאה בבדיקת שמות: ' + err.message, true);
+    return;
+  }
+  hideBusy();
+  if (!info.count) { setStatus('אין שמות לתיקון — כל המועמדים כבר בשם הנכון.'); return; }
+
+  const preview = info.samples.map(s => `  ${s.from}  →  ${s.to}`).join('\n');
+  if (!confirm(
+    `נמצאו ${info.count} מועמדים שהשם שלהם שונה ממה שכתוב בקורות החיים.\n\n` +
+    `דוגמאות:\n${preview}\n\n` +
+    `לתקן את כולם? (יעודכנו גם מייל וטלפון חסרים)`
+  )) return;
+
+  showBusy(`מתקן ${info.count} שמות…`);
+  try {
+    const r = await api('/api/candidates/repair-names', { method: 'POST' });
+    await loadData();
+    hideBusy();
+    setStatus(`✓ תוקנו ${r.renamed} שמות.`);
+  } catch (err) {
+    hideBusy();
+    setStatus('שגיאה בתיקון השמות: ' + err.message, true);
+  }
 }
 
 /* ---------- Bulk import (many CV files at once) ---------- */

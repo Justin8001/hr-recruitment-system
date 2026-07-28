@@ -69,6 +69,69 @@ router.get('/', asyncHandler(async (_req, res) => {
   res.json(result.rows.map(rowToCandidate));
 }));
 
+// The AI already extracted the candidate's real name/email/phone and we stored
+// it inside the analysis. When the rename right after import didn't stick, that
+// data is still there — so names can be repaired from it without re-uploading.
+const REPAIRABLE =
+  `COALESCE(a.ai->>'candidateName', '') <> ''
+   AND p.name IS DISTINCT FROM a.ai->>'candidateName'`;
+
+router.get('/repairable-names', asyncHandler(async (_req, res) => {
+  const result = await pool.query(
+    `SELECT p.name AS current_name, a.ai->>'candidateName' AS ai_name
+     FROM applications a JOIN people p ON p.id = a.person_id
+     WHERE ${REPAIRABLE}
+     ORDER BY a.added_at DESC`
+  );
+  res.json({
+    count: result.rows.length,
+    samples: result.rows.slice(0, 8).map(r => ({ from: r.current_name, to: r.ai_name }))
+  });
+}));
+
+router.post('/repair-names', asyncHandler(async (_req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const renamed = await client.query(
+      `UPDATE people p
+       SET name = a.ai->>'candidateName'
+       FROM applications a
+       WHERE a.person_id = p.id AND ${REPAIRABLE}
+       RETURNING p.id`
+    );
+    // Backfill contact details only where the person has none and the value
+    // isn't already taken — the email column is unique.
+    await client.query(
+      `UPDATE people p
+       SET email = lower(a.ai->>'candidateEmail')
+       FROM applications a
+       WHERE a.person_id = p.id
+         AND p.email IS NULL
+         AND COALESCE(a.ai->>'candidateEmail', '') <> ''
+         AND NOT EXISTS (
+           SELECT 1 FROM people p2
+           WHERE lower(p2.email) = lower(a.ai->>'candidateEmail') AND p2.id <> p.id
+         )`
+    );
+    await client.query(
+      `UPDATE people p
+       SET phone = a.ai->>'candidatePhone'
+       FROM applications a
+       WHERE a.person_id = p.id
+         AND p.phone IS NULL
+         AND COALESCE(a.ai->>'candidatePhone', '') <> ''`
+    );
+    await client.query('COMMIT');
+    res.json({ renamed: renamed.rowCount ?? 0 });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}));
+
 router.post('/', asyncHandler(async (req, res) => {
   const { name, email, phone, role, stage, notes, jobId, referral, personId } = req.body ?? {};
   if (!name || !String(name).trim()) {
