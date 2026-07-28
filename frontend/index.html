@@ -923,23 +923,37 @@ function openAnalysisModal(id) {
 function closeAiModal() { document.getElementById('aiModal').classList.remove('show'); }
 document.getElementById('aiModal').addEventListener('click', e => { if (e.target.id === 'aiModal') closeAiModal(); });
 
+// Analyze every candidate that hasn't been analyzed yet. We deliberately don't
+// filter on hasAttachment: Outlook reports no attachment for CVs embedded inline,
+// so trusting that flag silently skipped real CVs. The server reads the actual
+// attachments and tells us (noFile) when there was nothing to analyze — those
+// cost no AI call.
 async function analyzeNew() {
-  const list = candidates.filter(c => !c.ai && c.hasAttachment);
-  if (!list.length) { setStatus('אין מועמדים חדשים עם קו"ח מצורף לניתוח.'); return; }
-  if (!confirm(`לנתח ${list.length} מועמדים? הפעולה כרוכה בעלות שימוש ב-API.`)) return;
-  let done = 0, failed = 0;
+  const list = candidates.filter(c => !c.ai);
+  if (!list.length) { setStatus('כל המועמדים כבר נותחו.'); return; }
+  if (!confirm(`לנתח ${list.length} מועמדים? מועמדים ללא קו"ח מצורף ידולגו. הפעולה כרוכה בעלות שימוש ב-API.`)) return;
+  let done = 0, failed = 0, skipped = 0;
   showBusy(`🤖 מנתח 1/${list.length}…`);
   for (const c of list) {
-    setBusy(`🤖 מנתח ${done + failed + 1}/${list.length}: ${c.name}`);
+    setBusy(`🤖 מנתח ${done + failed + skipped + 1}/${list.length}: ${c.name}`);
     try {
-      const updated = await api('/api/candidates/' + c.id + '/analyze', { method: 'POST', body: JSON.stringify({}) });
+      const updated = await api('/api/candidates/' + c.id + '/analyze', {
+        method: 'POST', body: JSON.stringify({ autoMatch: true, fileOnly: true }),
+      });
       const i = candidates.findIndex(x => x.id === c.id); if (i >= 0) candidates[i] = updated;
       done++;
-    } catch { failed++; }
+    } catch (err) {
+      if (/אין קובץ קו"ח/.test(err.message)) skipped++; else failed++;
+    }
     scoreAll(); renderAll();  // update badges live as each one finishes
   }
   hideBusy();
-  setStatus(`ניתוח הושלם: ${done} הצליחו${failed ? `, ${failed} נכשלו` : ''}.`, !!failed);
+  setStatus(
+    `ניתוח הושלם: ${done} נותחו` +
+    `${skipped ? `, ${skipped} דולגו (אין קו"ח מצורף)` : ''}` +
+    `${failed ? `, ${failed} נכשלו` : ''}.`,
+    !!failed
+  );
 }
 
 /* ---------- Bulk import (many CV files at once) ---------- */

@@ -261,6 +261,10 @@ router.post('/:id/analyze', asyncHandler(async (req, res) => {
   let parts: GeminiPart[];
   if (prepared) {
     parts = prepared.parts;
+  } else if (req.body?.fileOnly) {
+    // Batch callers ask for this: no real CV file means nothing worth reading,
+    // so skip the candidate cheaply instead of burning a Gemini call on a snippet.
+    return res.status(422).json({ error: 'אין קובץ קו"ח במייל הזה', noFile: true });
   } else {
     const emailText = [row.subject, row.snippet, row.notes].filter(Boolean).join('\n').trim();
     if (!emailText) {
@@ -277,7 +281,9 @@ router.post('/:id/analyze', asyncHandler(async (req, res) => {
   // against a job the user had to choose up front.
   let analysis;
   let matchedJobId: string | null = null;
-  const openJobs = req.body?.autoMatch
+  // Only auto-match when nothing is assigned yet — never silently move a
+  // candidate the user already placed on a job.
+  const openJobs = req.body?.autoMatch && !row.job_id
     ? await pool.query(
         `SELECT j.id, j.job_number, j.title, j.keywords, j.description,
                 c.name AS client_name, c.looking_for AS client_looking_for
