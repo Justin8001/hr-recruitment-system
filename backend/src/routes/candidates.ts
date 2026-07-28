@@ -6,7 +6,8 @@ import { findOrCreatePerson, findPerson, normalizeEmail, normalizePhone } from '
 import { getProvider } from '../providers/index.js';
 import { encrypt, decrypt } from '../lib/crypto.js';
 import { prepareCvParts, type GeminiPart } from '../lib/cv.js';
-import { analyzeCv, draftLetter, isConfigured as geminiConfigured } from '../lib/gemini.js';
+import { analyzeCv, analyzeCvAutoMatch, draftLetter, isConfigured as geminiConfigured } from '../lib/gemini.js';
+import type { JobOption } from '../lib/gemini.js';
 import type { CvAttachment } from '../providers/types.js';
 
 const router = Router();
@@ -272,23 +273,59 @@ router.post('/:id/analyze', asyncHandler(async (req, res) => {
 
   // 3) Analyze and persist. Surface Gemini failures with their message
   // (timeout, quota, bad key) instead of a generic 500.
+  // autoMatch: let the AI pick which open job this CV fits, instead of scoring
+  // against a job the user had to choose up front.
   let analysis;
-  try {
-    analysis = await analyzeCv(
-      {
-        jobNumber: row.job_number, title: row.job_title, keywords: row.job_keywords,
-        description: row.job_description, clientName: row.client_name,
-        clientLookingFor: row.client_looking_for
-      },
-      parts
+  let matchedJobId: string | null = null;
+  if (req.body?.autoMatch) {
+    const openJobs = await pool.query(
+      `SELECT j.id, j.job_number, j.title, j.keywords, j.description,
+              c.name AS client_name, c.looking_for AS client_looking_for
+       FROM jobs j LEFT JOIN clients c ON c.id = j.client_id
+       WHERE j.status = 'open'
+       ORDER BY j.created_at DESC`
     );
-  } catch (err: any) {
-    return res.status(502).json({ error: err.message });
+    if (!openJobs.rows.length) {
+      return res.status(400).json({ error: 'אין משרות פתוחות לשיוך אוטומטי. פתח משרה אחת לפחות.' });
+    }
+    const options: JobOption[] = openJobs.rows.map(j => ({
+      id: String(j.id),
+      jobNumber: j.job_number,
+      title: j.title,
+      keywords: j.keywords,
+      description: j.description,
+      clientName: j.client_name,
+      clientLookingFor: j.client_looking_for
+    }));
+    try {
+      analysis = await analyzeCvAutoMatch(options, parts);
+    } catch (err: any) {
+      return res.status(502).json({ error: err.message });
+    }
+    matchedJobId = analysis.jobId || null;
+  } else {
+    try {
+      analysis = await analyzeCv(
+        {
+          jobNumber: row.job_number, title: row.job_title, keywords: row.job_keywords,
+          description: row.job_description, clientName: row.client_name,
+          clientLookingFor: row.client_looking_for
+        },
+        parts
+      );
+    } catch (err: any) {
+      return res.status(502).json({ error: err.message });
+    }
   }
-  const updated = await pool.query(
-    `UPDATE applications SET ai = $1, analyzed_at = now() WHERE id = $2 RETURNING id`,
-    [analysis, req.params.id]
-  );
+  const updated = matchedJobId
+    ? await pool.query(
+        `UPDATE applications SET ai = $1, analyzed_at = now(), job_id = $2 WHERE id = $3 RETURNING id`,
+        [analysis, Number(matchedJobId), req.params.id]
+      )
+    : await pool.query(
+        `UPDATE applications SET ai = $1, analyzed_at = now() WHERE id = $2 RETURNING id`,
+        [analysis, req.params.id]
+      );
   if (!updated.rows[0]) return res.status(404).json({ error: 'מועמד לא נמצא' });
 
   const result = await pool.query(`${SELECT_CANDIDATE} WHERE a.id = $1`, [req.params.id]);

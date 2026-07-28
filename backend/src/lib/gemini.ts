@@ -11,6 +11,11 @@ export interface JobContext {
   clientLookingFor?: string;
 }
 
+/** An open job offered to the AI as a candidate match during auto-matching. */
+export interface JobOption extends JobContext {
+  id: string;
+}
+
 export interface CvAnalysis {
   relevant: boolean;
   fit: number;                 // 1..3
@@ -25,6 +30,12 @@ export interface CvAnalysis {
   candidateName: string;       // full name as extracted from the CV text (for bulk-import auto-fill)
   candidateEmail: string;      // email as extracted from the CV text, '' if none found
   candidatePhone: string;      // phone as extracted from the CV text, '' if none found
+}
+
+/** Analysis plus the job the AI picked for this CV ('' when nothing fits). */
+export interface AutoMatchAnalysis extends CvAnalysis {
+  jobId: string;
+  jobReason: string;           // one line: why this job was chosen (or why none fit)
 }
 
 export function isConfigured(): boolean {
@@ -92,23 +103,13 @@ function buildPrompt(job: JobContext): string {
 }
 
 /**
- * Sends the CV (as Gemini parts) plus job context and returns structured analysis.
- * Throws on configuration or API errors (caller maps to a friendly message).
+ * POSTs a request body to Gemini and returns the parsed JSON payload it produced.
+ * Hard timeout so a hung request fails fast instead of blocking forever.
  */
-export async function analyzeCv(job: JobContext, cvParts: GeminiPart[]): Promise<CvAnalysis> {
+async function requestGeminiJson(body: unknown): Promise<any> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error('AI לא הוגדר בשרת (חסר GEMINI_API_KEY)');
 
-  const body = {
-    contents: [{ parts: [{ text: buildPrompt(job) }, ...cvParts] }],
-    generationConfig: {
-      responseMimeType: 'application/json',
-      responseSchema: RESPONSE_SCHEMA,
-      temperature: 0.2
-    }
-  };
-
-  // Hard timeout so a hung request fails fast instead of blocking forever.
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 120000);
   let res: Response;
@@ -134,13 +135,15 @@ export async function analyzeCv(job: JobContext, cvParts: GeminiPart[]): Promise
   }
 
   const text = data.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join('') || '';
-  let parsed: any;
   try {
-    parsed = JSON.parse(text);
+    return JSON.parse(text);
   } catch {
     throw new Error('Gemini החזיר פלט שאינו JSON תקין');
   }
+}
 
+/** Normalizes Gemini's raw JSON into a CvAnalysis (defensive against missing fields). */
+function toCvAnalysis(parsed: any): CvAnalysis {
   return {
     relevant: !!parsed.relevant,
     fit: Math.max(1, Math.min(3, Number(parsed.fit) || 1)),
@@ -155,6 +158,98 @@ export async function analyzeCv(job: JobContext, cvParts: GeminiPart[]): Promise
     candidateName: String(parsed.candidateName || ''),
     candidateEmail: String(parsed.candidateEmail || ''),
     candidatePhone: String(parsed.candidatePhone || '')
+  };
+}
+
+/**
+ * Sends the CV (as Gemini parts) plus job context and returns structured analysis.
+ * Throws on configuration or API errors (caller maps to a friendly message).
+ */
+export async function analyzeCv(job: JobContext, cvParts: GeminiPart[]): Promise<CvAnalysis> {
+  const parsed = await requestGeminiJson({
+    contents: [{ parts: [{ text: buildPrompt(job) }, ...cvParts] }],
+    generationConfig: {
+      responseMimeType: 'application/json',
+      responseSchema: RESPONSE_SCHEMA,
+      temperature: 0.2
+    }
+  });
+  return toCvAnalysis(parsed);
+}
+
+// Auto-match: same analysis, plus the AI first picks which open job fits best.
+const AUTO_MATCH_SCHEMA = {
+  type: 'object',
+  properties: {
+    ...RESPONSE_SCHEMA.properties,
+    jobId: { type: 'string' },
+    jobReason: { type: 'string' }
+  },
+  required: [...RESPONSE_SCHEMA.required, 'jobId', 'jobReason']
+};
+
+function buildAutoMatchPrompt(jobs: JobOption[]): string {
+  const lines = [
+    'אתה עוזר גיוס מומחה. לפניך קורות חיים ורשימת המשרות הפתוחות אצלנו.',
+    'משימתך: (א) לקבוע לאיזו משרה המועמד מתאים ביותר, (ב) לנתח אותו מול אותה משרה. ענה בעברית בלבד.',
+    '',
+    'המשרות הפתוחות:'
+  ];
+  for (const j of jobs) {
+    const parts = [`[jobId: ${j.id}]`, `כותרת: ${j.title || 'ללא כותרת'}`];
+    if (j.jobNumber) parts.push(`מספר משרה: ${j.jobNumber}`);
+    if (j.clientName) parts.push(`לקוח: ${j.clientName}`);
+    if (j.keywords) parts.push(`מילות מפתח: ${j.keywords}`);
+    if (j.description) parts.push(`תיאור: ${j.description}`);
+    if (j.clientLookingFor) parts.push(`מה הלקוח מחפש: ${j.clientLookingFor}`);
+    lines.push('- ' + parts.join(' | '));
+  }
+  lines.push(
+    '',
+    'החזר JSON עם:',
+    '- jobId: המזהה (jobId) של המשרה המתאימה ביותר מהרשימה למעלה, בדיוק כפי שנכתב. אם המועמד לא מתאים לאף אחת מהמשרות — החזר מחרוזת ריקה.',
+    '- jobReason: משפט אחד קצר שמסביר למה נבחרה המשרה הזו (או למה אף משרה לא מתאימה).',
+    '- relevant: האם המועמד רלוונטי למשרה שבחרת. אם לא בחרת משרה — false.',
+    '- fit: רמת התאמה למשרה שבחרת, 1 (נמוכה) עד 3 (גבוהה).',
+    '- summary: סיכום קצר של המועמד.',
+    '- strengths: יתרונות המועמד למשרה שנבחרה.',
+    '- concerns: פערים או נקודות שחשוב לברר.',
+    '- interviewQuestions: השאלות הכי חשובות לראיון הטלפוני.',
+    '- matchedKeywords: אילו ממילות המפתח של המשרה שנבחרה מופיעות בקורות החיים.',
+    '- certifications: רשימת ההכשרות/הסמכות של המועמד (למשל: ענף בנייה, הדרכה, קרינה, עבודה בגובה).',
+    '- age: הגיל המחושב של המועמד. חשב לפי תאריך לידה אם צוין, אחרת אמוד לפי שנת שירות צבאי/לימודים. אם אי אפשר להעריך — null.',
+    '- location: עיר/יישוב המגורים של המועמד (שם המקום בלבד).',
+    '- candidateName: שם המועמד/ת המלא כפי שמופיע בקורות החיים עצמם (חשוב מאוד). אם אי אפשר לזהות — מחרוזת ריקה.',
+    '- candidateEmail: כתובת האימייל של המועמד מקורות החיים. מחרוזת ריקה אם אין.',
+    '- candidatePhone: מספר הטלפון של המועמד מקורות החיים. מחרוזת ריקה אם אין.'
+  );
+  return lines.join('\n');
+}
+
+/**
+ * Picks the best-fitting open job for this CV and analyzes against it — one call.
+ * Returns jobId '' when the AI judged that no open job fits.
+ */
+export async function analyzeCvAutoMatch(
+  jobs: JobOption[],
+  cvParts: GeminiPart[]
+): Promise<AutoMatchAnalysis> {
+  const parsed = await requestGeminiJson({
+    contents: [{ parts: [{ text: buildAutoMatchPrompt(jobs) }, ...cvParts] }],
+    generationConfig: {
+      responseMimeType: 'application/json',
+      responseSchema: AUTO_MATCH_SCHEMA,
+      temperature: 0.2
+    }
+  });
+
+  // Only trust an id that actually exists — the model can hallucinate one.
+  const picked = String(parsed.jobId || '');
+  const jobId = jobs.some(j => j.id === picked) ? picked : '';
+  return {
+    ...toCvAnalysis(parsed),
+    jobId,
+    jobReason: String(parsed.jobReason || '')
   };
 }
 

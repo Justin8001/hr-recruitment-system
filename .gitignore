@@ -10,3 +10,6 @@ dist/
 # Environment / secrets
 .env
 .env.local
+
+# Netlify CLI local state
+.netlify/

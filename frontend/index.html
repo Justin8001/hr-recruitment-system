@@ -393,11 +393,12 @@
   <div class="modal" style="max-width:560px">
     <h3>📥 ייבוא מרובה של קורות חיים</h3>
     <div class="hint" style="margin-bottom:8px">
-      בחר משרה, ובחר את כל קבצי הקו"ח בבת אחת (PDF / Word / תמונה — גם אם הגיעו מוואטסאפ עם שמות קבצים אקראיים).
-      לכל קובץ ייווצר מועמד, וה-AI ינתח את הקובץ וימלא ממנו שם ופרטי קשר אוטומטית.
+      בחר את כל קבצי הקו"ח בבת אחת (PDF / Word / תמונה — גם אם הגיעו מוואטסאפ עם שמות קבצים אקראיים).
+      לכל קובץ ייווצר מועמד, וה-AI ינתח את הקובץ, ימלא ממנו שם ופרטי קשר, וישייך אותו למשרה המתאימה ביותר — אוטומטית.
     </div>
-    <div class="field"><label>משרה *</label>
+    <div class="field"><label>שיוך למשרה</label>
       <select id="bulkJob" style="width:100%; padding:7px"></select>
+      <div class="hint" style="margin-top:4px">ברירת המחדל: ה-AI בוחר לבד לאיזו משרה פתוחה כל מועמד מתאים.</div>
     </div>
     <div class="field"><label>קבצים *</label>
       <input type="file" id="bulkFiles" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" multiple>
@@ -905,6 +906,7 @@ function openAnalysisModal(id) {
     ? `<div class="field"><b>הכשרות</b><br>${(a.certifications || []).map(k => `<span class="badge crit">${esc(k)}</span>`).join(' ')}</div>` : '';
   document.getElementById('aiModalBody').innerHTML = `
     <div class="field"><b>${esc(fitTxt)}</b>${c.jobNumber ? ` · משרה #${esc(c.jobNumber)} ${esc(c.jobTitle)}` : ' · ללא משרה משויכת'}</div>
+    ${a.jobReason ? `<div class="field" style="color:var(--muted)">🎯 למה שויך לכאן: ${esc(a.jobReason)}</div>` : ''}
     ${facts ? `<div class="field" style="color:var(--muted)">${facts}</div>` : ''}
     ${certs}
     <div class="field"><b>סיכום</b><br>${esc(a.summary || '')}</div>
@@ -941,7 +943,7 @@ async function analyzeNew() {
 function openBulkImportModal() {
   const open = jobs.filter(j => j.status === 'open');
   document.getElementById('bulkJob').innerHTML =
-    '<option value="">— בחר משרה —</option>' +
+    '<option value="auto" selected>🤖 שיוך אוטומטי — שה-AI יחליט</option>' +
     open.map(j => `<option value="${j.id}">#${esc(j.jobNumber)} ${esc(j.title)}${j.clientName ? ' · ' + esc(j.clientName) : ''}</option>`).join('');
   document.getElementById('bulkFiles').value = '';
   document.getElementById('bulkProgress').innerHTML = '';
@@ -977,11 +979,14 @@ async function bulkCreateCandidate(name, jobId) {
 }
 
 async function startBulkImport() {
-  const jobId = document.getElementById('bulkJob').value;
-  if (!jobId) { alert('נא לבחור משרה'); return; }
+  const jobChoice = document.getElementById('bulkJob').value;
+  const autoMatch = jobChoice === 'auto';
+  const jobId = autoMatch ? null : jobChoice;
+  if (!autoMatch && !jobId) { alert('נא לבחור משרה'); return; }
   const files = Array.from(document.getElementById('bulkFiles').files || []);
   if (!files.length) { alert('נא לבחור קבצים'); return; }
-  if (!confirm(`לייבא ולנתח ${files.length} קבצים מול המשרה שנבחרה? הפעולה כרוכה בעלות שימוש ב-API ועשויה לקחת כמה דקות.`)) return;
+  const target = autoMatch ? 'עם שיוך אוטומטי למשרות' : 'מול המשרה שנבחרה';
+  if (!confirm(`לייבא ולנתח ${files.length} קבצים ${target}? הפעולה כרוכה בעלות שימוש ב-API ועשויה לקחת כמה דקות.`)) return;
 
   document.getElementById('bulkStartBtn').disabled = true;
   const progress = document.getElementById('bulkProgress');
@@ -998,7 +1003,7 @@ async function startBulkImport() {
       const dataBase64 = await fileToBase64(f);
       const analyzed = await api('/api/candidates/' + created.id + '/analyze', {
         method: 'POST',
-        body: JSON.stringify({ file: { filename: f.name, mimeType: f.type, dataBase64 } }),
+        body: JSON.stringify({ file: { filename: f.name, mimeType: f.type, dataBase64 }, autoMatch }),
       });
 
       // The AI read the actual name/email/phone off the CV — use it to replace
@@ -1020,7 +1025,10 @@ async function startBulkImport() {
       if (i2 >= 0) candidates[i2] = finalRow; else candidates.push(finalRow);
 
       const fitTxt = finalRow.ai ? (finalRow.ai.relevant ? `✅ מתאים (${finalRow.ai.fit}/3)` : '⚠️ לא רלוונטי') : '';
-      row.textContent = `✔ ${finalRow.name} — ${fitTxt}`;
+      const jobTxt = finalRow.jobTitle
+        ? ` · 🎯 ${finalRow.jobTitle}`
+        : (autoMatch ? ' · ❔ לא שויך למשרה' : '');
+      row.textContent = `✔ ${finalRow.name} — ${fitTxt}${jobTxt}`;
       ok++;
     } catch (err) {
       row.textContent = `✖ ${f.name}: ${err.message}`;
