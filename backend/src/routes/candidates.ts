@@ -277,17 +277,18 @@ router.post('/:id/analyze', asyncHandler(async (req, res) => {
   // against a job the user had to choose up front.
   let analysis;
   let matchedJobId: string | null = null;
-  if (req.body?.autoMatch) {
-    const openJobs = await pool.query(
-      `SELECT j.id, j.job_number, j.title, j.keywords, j.description,
-              c.name AS client_name, c.looking_for AS client_looking_for
-       FROM jobs j LEFT JOIN clients c ON c.id = j.client_id
-       WHERE j.status = 'open'
-       ORDER BY j.created_at DESC`
-    );
-    if (!openJobs.rows.length) {
-      return res.status(400).json({ error: 'אין משרות פתוחות לשיוך אוטומטי. פתח משרה אחת לפחות.' });
-    }
+  const openJobs = req.body?.autoMatch
+    ? await pool.query(
+        `SELECT j.id, j.job_number, j.title, j.keywords, j.description,
+                c.name AS client_name, c.looking_for AS client_looking_for
+         FROM jobs j LEFT JOIN clients c ON c.id = j.client_id
+         WHERE j.status = 'open'
+         ORDER BY j.created_at DESC`
+      )
+    : null;
+  // With no open jobs there is nothing to match against, but the CV should still
+  // be read and classified — fall through to the plain (job-less) analysis.
+  if (openJobs?.rows.length) {
     const options: JobOption[] = openJobs.rows.map(j => ({
       id: String(j.id),
       jobNumber: j.job_number,
@@ -317,15 +318,23 @@ router.post('/:id/analyze', asyncHandler(async (req, res) => {
       return res.status(502).json({ error: err.message });
     }
   }
-  const updated = matchedJobId
-    ? await pool.query(
-        `UPDATE applications SET ai = $1, analyzed_at = now(), job_id = $2 WHERE id = $3 RETURNING id`,
-        [analysis, Number(matchedJobId), req.params.id]
-      )
-    : await pool.query(
-        `UPDATE applications SET ai = $1, analyzed_at = now() WHERE id = $2 RETURNING id`,
-        [analysis, req.params.id]
-      );
+  const sets = ['ai = $1', 'analyzed_at = now()'];
+  const values: unknown[] = [analysis];
+  if (matchedJobId) {
+    values.push(Number(matchedJobId));
+    sets.push(`job_id = $${values.length}`);
+  }
+  // Classify the candidate by what they actually are, so a bulk-imported CV
+  // isn't left blank on the board when no job was assigned.
+  if (analysis.profession && !String(row.role ?? '').trim()) {
+    values.push(analysis.profession);
+    sets.push(`role = $${values.length}`);
+  }
+  values.push(req.params.id);
+  const updated = await pool.query(
+    `UPDATE applications SET ${sets.join(', ')} WHERE id = $${values.length} RETURNING id`,
+    values
+  );
   if (!updated.rows[0]) return res.status(404).json({ error: 'מועמד לא נמצא' });
 
   const result = await pool.query(`${SELECT_CANDIDATE} WHERE a.id = $1`, [req.params.id]);

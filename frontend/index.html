@@ -403,6 +403,9 @@
     <div class="field"><label>קבצים *</label>
       <input type="file" id="bulkFiles" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" multiple>
     </div>
+    <div class="hint" id="bulkNoJobsHint" style="display:none; color:var(--amber)">
+      ⚠️ אין משרות פתוחות במערכת, אז אין למה לשייך. הייבוא עדיין יעבוד: כל מועמד ייקרא, יסווג לפי תחום העיסוק שלו וייכנס ללוח — ותוכל לשייך למשרה בהמשך.
+    </div>
     <div class="row">
       <button class="btn primary" id="bulkStartBtn" onclick="startBulkImport()">🚀 התחל ייבוא</button>
       <button class="btn" onclick="closeBulkModal()">סגור</button>
@@ -945,6 +948,7 @@ function openBulkImportModal() {
   document.getElementById('bulkJob').innerHTML =
     '<option value="auto" selected>🤖 שיוך אוטומטי — שה-AI יחליט</option>' +
     open.map(j => `<option value="${j.id}">#${esc(j.jobNumber)} ${esc(j.title)}${j.clientName ? ' · ' + esc(j.clientName) : ''}</option>`).join('');
+  document.getElementById('bulkNoJobsHint').style.display = open.length ? 'none' : '';
   document.getElementById('bulkFiles').value = '';
   document.getElementById('bulkProgress').innerHTML = '';
   document.getElementById('bulkModal').classList.add('show');
@@ -1027,7 +1031,7 @@ async function startBulkImport() {
       const fitTxt = finalRow.ai ? (finalRow.ai.relevant ? `✅ מתאים (${finalRow.ai.fit}/3)` : '⚠️ לא רלוונטי') : '';
       const jobTxt = finalRow.jobTitle
         ? ` · 🎯 ${finalRow.jobTitle}`
-        : (autoMatch ? ' · ❔ לא שויך למשרה' : '');
+        : (finalRow.role ? ` · 🏷 ${finalRow.role}` : (autoMatch ? ' · ❔ לא שויך למשרה' : ''));
       row.textContent = `✔ ${finalRow.name} — ${fitTxt}${jobTxt}`;
       ok++;
     } catch (err) {

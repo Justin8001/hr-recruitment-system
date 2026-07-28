@@ -1,4 +1,5 @@
 import mammoth from 'mammoth';
+import WordExtractor from 'word-extractor';
 import type { CvAttachment } from '../providers/types.js';
 
 // A Gemini content "part": either inline binary (PDF/image) or plain text.
@@ -17,7 +18,8 @@ const INLINE_MIME = new Set([
  * Turns a downloaded CV into Gemini parts.
  * - PDF / image  → inline_data (Gemini reads it natively).
  * - DOCX         → text extracted via mammoth.
- * - anything else (e.g. legacy .doc) → null; caller falls back to email text.
+ * - legacy .doc  → text extracted via word-extractor.
+ * - anything else → null; caller falls back to email text.
  */
 export async function prepareCvParts(
   file: CvAttachment | null
@@ -34,16 +36,28 @@ export async function prepareCvParts(
   }
 
   const name = (file.filename || '').toLowerCase();
+  const buffer = Buffer.from(file.dataBase64, 'base64');
+  const asText = (text: string) => ({
+    parts: [{ text: `תוכן קורות החיים (מקובץ ${file.filename}):\n${text}` }] as GeminiPart[],
+    sourceNote: `קובץ מצורף: ${file.filename}`
+  });
+
   if (name.endsWith('.docx') || mime.includes('officedocument.wordprocessingml')) {
     try {
-      const { value } = await mammoth.extractRawText({ buffer: Buffer.from(file.dataBase64, 'base64') });
+      const { value } = await mammoth.extractRawText({ buffer });
       const text = (value || '').trim();
-      if (text) {
-        return {
-          parts: [{ text: `תוכן קורות החיים (מקובץ ${file.filename}):\n${text}` }],
-          sourceNote: `קובץ מצורף: ${file.filename}`
-        };
-      }
+      if (text) return asText(text);
+    } catch {
+      // fall through — try the legacy reader, then null
+    }
+  }
+
+  // Legacy Word (.doc, pre-2007): mammoth can't read it, word-extractor can.
+  if (name.endsWith('.doc') || mime === 'application/msword') {
+    try {
+      const doc = await new WordExtractor().extract(buffer);
+      const text = (doc.getBody() || '').trim();
+      if (text) return asText(text);
     } catch {
       // fall through to null — caller uses email text instead
     }
