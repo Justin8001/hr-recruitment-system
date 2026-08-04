@@ -3,26 +3,37 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>מערכת גיוס מועמדים</title>
+<title>מערכת גיוס מועמדים | HB Consulting</title>
 <script src="config.js"></script>
 <style>
+  /* HB Consulting brand palette (Brand Identity Guidelines Sheet, v1.0).
+     Royal Blue is the primary, Vibrant Purple the accent and hover state, and
+     the two form the horizontal brand gradient. Status colours (green/red/amber)
+     stay outside the palette on purpose — they carry meaning, not identity. */
   :root {
     color-scheme: light;
-    --bg: #f6f7f9;
+    --brand-blue: #2E4B94;      /* Royal Blue   — primary */
+    --brand-purple: #75318D;    /* Vibrant Purple — accent / hover */
+    --brand-slate: #414042;     /* Slate Grey   — body text */
+    --brand-black: #1A1A1B;     /* Rich Black   — headings */
+    --brand-gradient: linear-gradient(90deg, #75318D 0%, #2E4B94 100%);
+
+    --bg: #f8f9fa;
     --card: #ffffff;
-    --border: #e3e6ea;
-    --text: #1c2430;
-    --muted: #6b7685;
-    --accent: #2563eb;
-    --accent-soft: #eaf1fe;
+    --border: #e4e7ec;
+    --text: var(--brand-black);
+    /* Lightened from Slate Grey so hints still sit below body text. */
+    --muted: #71717a;
+    --accent: var(--brand-blue);
+    --accent-soft: #eaeef7;
     --green: #16a34a;
     --green-soft: #e8f7ee;
     --red: #dc2626;
     --red-soft: #fdecec;
     --amber: #d97706;
     --amber-soft: #fdf3e3;
-    --purple: #7c3aed;
-    --purple-soft: #f1eafe;
+    --purple: var(--brand-purple);
+    --purple-soft: #f3eaf7;
     --radius: 10px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -37,18 +48,28 @@
     display: flex; align-items: center; justify-content: space-between;
     flex-wrap: wrap; gap: 10px; margin-bottom: 14px;
   }
-  header h1 { font-size: 20px; }
+  header h1 { font-size: 20px; color: var(--brand-black); }
   header .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand img { height: 46px; width: auto; display: block; }
+  /* The gradient reads as the brand signature across the top of the page. */
+  .brand-rule { height: 3px; background: var(--brand-gradient); border-radius: 2px; margin-bottom: 14px; }
   .btn {
     border: 1px solid var(--border); background: var(--card); color: var(--text);
     padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 13px;
     font-family: inherit; transition: background .15s;
   }
-  .btn:hover { background: #f0f3f7; }
+  .btn:hover { background: var(--accent-soft); }
   .btn:disabled { opacity: .55; cursor: not-allowed; }
-  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .btn.primary:hover { background: #1d4fd7; }
+  /* Interactive elements carry the brand gradient and shift to purple on hover,
+     per the usage guidelines. */
+  .btn.primary {
+    background: var(--brand-gradient); border-color: transparent; color: #fff;
+    font-weight: 600;
+  }
+  .btn.primary:hover { background: var(--brand-purple); }
   .btn.primary:disabled { opacity: .6; cursor: wait; }
+  .btn:not(.primary):hover { background: var(--accent-soft); border-color: var(--accent); }
   .btn.small { padding: 4px 9px; font-size: 12px; }
   .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .tabs { display: flex; gap: 4px; margin-bottom: 14px; border-bottom: 1px solid var(--border); }
@@ -63,7 +84,7 @@
     background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
     padding: 10px 16px; min-width: 110px;
   }
-  .stat .num { font-size: 22px; font-weight: 700; }
+  .stat .num { font-size: 22px; font-weight: 700; color: var(--brand-blue); }
   .stat .lbl { font-size: 11px; color: var(--muted); }
   /* Kanban */
   .board { display: flex; gap: 10px; overflow-x: auto; align-items: flex-start; padding-bottom: 8px; }
@@ -103,7 +124,7 @@
   /* Table */
   table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: var(--radius); overflow: hidden; }
   th, td { padding: 9px 12px; text-align: right; border-bottom: 1px solid var(--border); font-size: 13px; }
-  th { background: #eef0f4; font-size: 12px; color: var(--muted); }
+  th { background: var(--accent-soft); font-size: 12px; color: var(--brand-blue); font-weight: 600; }
   tr:hover td { background: #fafbfc; }
   select.stage {
     font-family: inherit; font-size: 12px; padding: 3px 6px; border-radius: 6px;
@@ -114,7 +135,7 @@
     background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
     padding: 16px; margin-bottom: 14px; max-width: 720px;
   }
-  .panel h3 { font-size: 15px; margin-bottom: 4px; }
+  .panel h3 { font-size: 15px; margin-bottom: 4px; color: var(--brand-black); }
   .panel .hint { color: var(--muted); font-size: 12px; margin-bottom: 12px; }
   .field { margin-bottom: 12px; }
   .field label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px; }
@@ -145,7 +166,7 @@
      pressed inside a long form for the feedback to be noticed. */
   #toast {
     position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(10px);
-    background: #1c2430; color: #fff; padding: 12px 22px; border-radius: 10px;
+    background: var(--brand-black); color: #fff; padding: 12px 22px; border-radius: 10px;
     font-size: 14px; font-weight: 600; box-shadow: 0 6px 24px rgba(0,0,0,.28);
     opacity: 0; pointer-events: none; transition: opacity .18s, transform .18s;
     z-index: 200; max-width: 90vw; text-align: center;
@@ -171,8 +192,9 @@
 <!-- ===== Login screen ===== -->
 <div id="loginScreen">
   <form class="modal" onsubmit="doLogin(event)">
-    <h2>📋 מערכת גיוס מועמדים</h2>
-    <div class="hint">התחברות למערכת</div>
+    <img src="logo.png" alt="HB Consulting" style="display:block; width:190px; margin:0 auto 14px">
+    <h2 style="text-align:center">מערכת גיוס מועמדים</h2>
+    <div class="hint" style="text-align:center">התחברות למערכת</div>
     <div class="field"><label>שם משתמש</label><input type="text" id="loginUser" autocomplete="username"></div>
     <div class="field"><label>סיסמה</label><input type="password" id="loginPass" autocomplete="current-password"></div>
     <button class="btn primary" type="submit" style="width:100%">התחבר</button>
@@ -184,9 +206,12 @@
 <div id="app" style="display:none">
 
 <header>
-  <div>
-    <h1>📋 מערכת גיוס מועמדים</h1>
-    <div class="sub">ניהול מועמדים, ראיונות וקריטריוני סינון</div>
+  <div class="brand">
+    <img src="logo.png" alt="HB Consulting">
+    <div>
+      <h1>מערכת גיוס מועמדים</h1>
+      <div class="sub">HB Consulting · People &amp; Performance Partner</div>
+    </div>
   </div>
   <div class="toolbar">
     <button class="btn primary" id="btnScan" onclick="scanEmails()">🔍 סרוק מיילים</button>
@@ -199,6 +224,7 @@
   </div>
 </header>
 
+<div class="brand-rule"></div>
 <div class="status-line" id="statusLine"></div>
 
 <div class="stats" id="statsBar"></div>
@@ -894,7 +920,7 @@ function barChart(rows, opts = {}) {
       : ' style="display:flex; align-items:center; gap:8px; font-size:12px"';
     return `<div${click}>
       <div style="width:150px; flex-shrink:0; text-align:start">${esc(r.label)}</div>
-      <div style="flex:1; background:#eef0f4; border-radius:4px; overflow:hidden; height:18px">
+      <div style="flex:1; background:var(--accent-soft); border-radius:4px; overflow:hidden; height:18px">
         <div style="width:${(r.value / max) * 100}%; background:${color}; height:100%"></div>
       </div>
       <div style="width:52px; text-align:start; color:var(--muted)">${r.value}${opts.suffix || ''}</div>
