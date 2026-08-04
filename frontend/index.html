@@ -864,8 +864,13 @@ function median(nums) {
 
 function ils(n) { return n ? '₪' + Math.round(n).toLocaleString('he-IL') : '—'; }
 
-function kpi(value, label, hint) {
-  return `<div class="stat" style="min-width:150px">
+// Every figure on the dashboard drills through to the records behind it —
+// "35 with high salary expectations" is only useful if you can see who they are.
+function kpi(value, label, hint, drill) {
+  const click = drill
+    ? ` style="min-width:150px; cursor:pointer" onclick="${drill}" title="לחץ לראות מי הם"`
+    : ' style="min-width:150px"';
+  return `<div class="stat"${click}>
     <div class="num">${value}</div><div class="lbl">${label}</div>
     ${hint ? `<div class="lbl" style="color:var(--muted);font-size:10px">${hint}</div>` : ''}
   </div>`;
@@ -876,14 +881,23 @@ function barChart(rows, opts = {}) {
   const max = Math.max(1, ...rows.map(r => r.value));
   const color = opts.color || 'var(--accent)';
   if (!rows.length) return '<div class="hint">אין נתונים להצגה.</div>';
-  return `<div style="display:flex; flex-direction:column; gap:6px">` + rows.map(r => `
-    <div style="display:flex; align-items:center; gap:8px; font-size:12px">
+  return `<div style="display:flex; flex-direction:column; gap:6px">` + rows.map(r => {
+    const click = r.drill
+      ? ` onclick="${r.drill}" style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer" title="לחץ לראות מי הם"`
+      : ' style="display:flex; align-items:center; gap:8px; font-size:12px"';
+    return `<div${click}>
       <div style="width:150px; flex-shrink:0; text-align:start">${esc(r.label)}</div>
       <div style="flex:1; background:#eef0f4; border-radius:4px; overflow:hidden; height:18px">
         <div style="width:${(r.value / max) * 100}%; background:${color}; height:100%"></div>
       </div>
       <div style="width:52px; text-align:start; color:var(--muted)">${r.value}${opts.suffix || ''}</div>
-    </div>`).join('') + '</div>';
+    </div>`;
+  }).join('') + '</div>';
+}
+
+/** Build an onclick that survives quotes in Hebrew values like צ"ש גבוהות. */
+function drillCall(fn, key, value) {
+  return `${fn}('${key}', ${JSON.stringify(String(value)).replace(/"/g, '&quot;')})`;
 }
 
 function renderDashboard() {
@@ -903,13 +917,13 @@ function renderDashboard() {
   const avgSalary = salaries.length ? salaries.reduce((a, b) => a + b, 0) / salaries.length : 0;
 
   const candidateKpis = [
-    kpi(total, 'סה"כ מועמדים'),
-    kpi(pct(interviewed, total) + '%', '% רואיינו (TEAMS)', `${interviewed} מועמדים`),
-    kpi(pct(toClient, total) + '%', '% הועברו ללקוח', `${toClient} מועמדים`),
-    kpi(pct(approved, total) + '%', '% אושרו ע"י הלקוח', `${approved} מועמדים`),
-    kpi(pct(hired, total) + '%', '% גויסו', `${hired} מועמדים`),
-    kpi(ils(avgSalary), 'ממוצע ציפיות שכר', `${salaries.length} עם נתון`),
-    kpi(ils(median(salaries)), 'חציון ציפיות שכר'),
+    kpi(total, 'סה"כ מועמדים', '', "drillToCandidates('', '')"),
+    kpi(pct(interviewed, total) + '%', '% רואיינו (TEAMS)', `${interviewed} מועמדים`, drillCall('drillToCandidates', 'milestone', 'interviewedTeams')),
+    kpi(pct(toClient, total) + '%', '% הועברו ללקוח', `${toClient} מועמדים`, drillCall('drillToCandidates', 'milestone', 'sentToClient')),
+    kpi(pct(approved, total) + '%', '% אושרו ע"י הלקוח', `${approved} מועמדים`, drillCall('drillToCandidates', 'milestone', 'clientApproved')),
+    kpi(pct(hired, total) + '%', '% גויסו', `${hired} מועמדים`, drillCall('drillToCandidates', 'milestone', 'hired')),
+    kpi(ils(avgSalary), 'ממוצע ציפיות שכר', `${salaries.length} עם נתון`, drillCall('drillToCandidates', 'milestone', 'hasSalary')),
+    kpi(ils(median(salaries)), 'חציון ציפיות שכר', '', drillCall('drillToCandidates', 'milestone', 'hasSalary')),
   ].join('');
 
   // ---- job KPIs ----
@@ -921,13 +935,13 @@ function renderDashboard() {
   const avgFill = fillTimes.length ? fillTimes.reduce((a, b) => a + b, 0) / fillTimes.length : 0;
 
   const jobKpis = [
-    kpi(jobs.length, 'סה"כ בקשות גיוס'),
-    kpi(awaiting, 'ממתינות לאיוש'),
-    kpi(filled, 'אוישו'),
-    kpi(notFilled, 'לא אוישו'),
-    kpi(avgFill ? avgFill.toFixed(2) : '—', 'ממוצע זמן גיוס (חודשים)'),
-    kpi(frozen, 'משרות בהקפאה'),
-    kpi(pct(filled, closed) + '%', '% הצלחת איוש', 'מתוך הסגורות'),
+    kpi(jobs.length, 'סה"כ בקשות גיוס', '', "drillToJobs('', '')"),
+    kpi(awaiting, 'ממתינות לאיוש', '', drillCall('drillToJobs', 'status', 'awaiting')),
+    kpi(filled, 'אוישו', '', drillCall('drillToJobs', 'status', 'filled')),
+    kpi(notFilled, 'לא אוישו', '', drillCall('drillToJobs', 'status', 'not_filled')),
+    kpi(avgFill ? avgFill.toFixed(2) : '—', 'ממוצע זמן גיוס (חודשים)', '', drillCall('drillToJobs', 'status', 'filled')),
+    kpi(frozen, 'משרות בהקפאה', '', drillCall('drillToJobs', 'status', 'frozen')),
+    kpi(pct(filled, closed) + '%', '% הצלחת איוש', 'מתוך הסגורות', drillCall('drillToJobs', 'status', 'filled')),
   ].join('');
 
   // ---- charts ----
@@ -939,15 +953,15 @@ function renderDashboard() {
     byMonth.set(key, (byMonth.get(key) || 0) + 1);
   }
   const monthRows = [...byMonth.entries()].sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([k, v]) => ({ label: k, value: v }));
+    .map(([k, v]) => ({ label: k, value: v, drill: drillCall('drillToCandidates', 'month', k) }));
 
   const funnelRows = [
-    { label: 'סה"כ מועמדים', value: total },
-    { label: 'ראיון TEAMS', value: interviewed },
-    { label: 'קיבלו משימה', value: n(c => c.gotTask) },
-    { label: 'הועברו ללקוח', value: toClient },
-    { label: 'אושרו ע"י הלקוח', value: approved },
-    { label: 'גויסו', value: hired },
+    { label: 'סה"כ מועמדים', value: total, drill: "drillToCandidates('', '')" },
+    { label: 'ראיון TEAMS', value: interviewed, drill: drillCall('drillToCandidates', 'milestone', 'interviewedTeams') },
+    { label: 'קיבלו משימה', value: n(c => c.gotTask), drill: drillCall('drillToCandidates', 'milestone', 'gotTask') },
+    { label: 'הועברו ללקוח', value: toClient, drill: drillCall('drillToCandidates', 'milestone', 'sentToClient') },
+    { label: 'אושרו ע"י הלקוח', value: approved, drill: drillCall('drillToCandidates', 'milestone', 'clientApproved') },
+    { label: 'גויסו', value: hired, drill: drillCall('drillToCandidates', 'milestone', 'hired') },
   ];
 
   const byStatus = new Map();
@@ -956,16 +970,15 @@ function renderDashboard() {
     byStatus.set(s, (byStatus.get(s) || 0) + 1);
   }
   const statusRows = [...byStatus.entries()].sort((a, b) => b[1] - a[1])
-    .map(([k, v]) => ({ label: k, value: v }));
+    .map(([k, v]) => ({ label: k, value: v, drill: drillCall('drillToCandidates', 'outcome', k) }));
 
   const bySource = new Map();
   for (const c of people) {
-    const s = c.sourceChannel || c.referral ||
-      (c.source === 'outlook' ? 'Outlook' : c.source === 'gmail' ? 'Gmail' : '(לא ידוע)');
+    const s = channelOf(c);
     bySource.set(s, (bySource.get(s) || 0) + 1);
   }
   const sourceRows = [...bySource.entries()].sort((a, b) => b[1] - a[1])
-    .map(([k, v]) => ({ label: k, value: v }));
+    .map(([k, v]) => ({ label: k, value: v, drill: drillCall('drillToCandidates', 'channel', k) }));
 
   const byClient = new Map();
   for (const j of jobs) {
@@ -973,9 +986,10 @@ function renderDashboard() {
     byClient.set(k, (byClient.get(k) || 0) + 1);
   }
   const clientRows = [...byClient.entries()].sort((a, b) => b[1] - a[1])
-    .map(([k, v]) => ({ label: k, value: v }));
+    .map(([k, v]) => ({ label: k, value: v, drill: drillCall('drillToJobs', 'client', k) }));
 
-  const jobStatusRows = JOB_STATUSES.map(s => ({ label: s.label, value: jn(s.id) }));
+  const jobStatusRows = JOB_STATUSES.map(s =>
+    ({ label: s.label, value: jn(s.id), drill: drillCall('drillToJobs', 'status', s.id) }));
 
   wrap.innerHTML = `
     <div class="panel"><h3>מועמדים</h3><div class="stats" style="margin:0">${candidateKpis}</div></div>
@@ -1138,11 +1152,70 @@ function renderBoard() {
 
 // List filters. Kept in module state so re-renders (e.g. a stage change) don't
 // throw the user back to the full 400-row table.
-let listFilters = { q: '', source: '', analyzed: '' };
+const EMPTY_LIST_FILTERS = { q: '', source: '', analyzed: '', outcome: '', milestone: '', channel: '', month: '' };
+let listFilters = { ...EMPTY_LIST_FILTERS };
 
 function setListFilter(key, value) {
   listFilters[key] = value;
   renderList();
+}
+
+// Drill-down labels, so a filtered table always says why it's filtered — a
+// subset with no explanation reads like missing data.
+const MILESTONE_FILTERS = {
+  interviewedTeams: 'רואיינו ב-TEAMS',
+  gotTask: 'קיבלו משימה',
+  sentToClient: 'הועברו ללקוח',
+  clientApproved: 'אושרו ע"י הלקוח',
+  hired: 'גויסו',
+  hasSalary: 'עם ציפיות שכר',
+};
+
+/** The source bucket a candidate falls into — shared by the chart and the filter. */
+function channelOf(c) {
+  return c.sourceChannel || c.referral ||
+    (c.source === 'outlook' ? 'Outlook' : c.source === 'gmail' ? 'Gmail' : '(לא ידוע)');
+}
+
+function monthOf(c) {
+  const d = c.contactedAt || c.date || c.addedAt;
+  return d ? String(d).slice(0, 7) : '';
+}
+
+function isHired(c) {
+  return c.stage === 'staffed' || (c.outcomeStatus || '').includes('גוייס');
+}
+
+/** Jump from a figure on the dashboard to the people behind it. */
+function drillToCandidates(key, value) {
+  listFilters = { ...EMPTY_LIST_FILTERS };
+  if (key) listFilters[key] = value;
+  switchTab('list');
+  renderList();
+}
+
+function drillToJobs(key, value) {
+  jobFilters = { q: '', status: '', client: '' };
+  if (key) jobFilters[key] = value;
+  switchTab('jobs');
+  renderJobs();
+}
+
+function clearListDrill() {
+  Object.assign(listFilters, { outcome: '', milestone: '', channel: '', month: '' });
+  renderList();
+}
+
+function drillChip() {
+  const f = listFilters;
+  const label =
+    f.outcome ? `סטטוס: ${f.outcome}` :
+    f.milestone ? MILESTONE_FILTERS[f.milestone] || f.milestone :
+    f.channel ? `מקור: ${f.channel}` :
+    f.month ? `חודש: ${f.month}` : '';
+  if (!label) return '';
+  return `<span class="badge" style="background:var(--accent-soft); color:var(--accent); cursor:pointer"
+     onclick="clearListDrill()" title="נקה סינון">🔎 ${esc(label)} ✕</span>`;
 }
 
 function setMergeDuplicates(on) {
@@ -1186,6 +1259,17 @@ function matchesListFilters(c) {
   if (f.source && c.source !== f.source) return false;
   if (f.analyzed === 'yes' && !c.ai) return false;
   if (f.analyzed === 'no' && c.ai) return false;
+  if (f.outcome) {
+    const s = c.outcomeStatus || '(ללא סטטוס)';
+    if (s !== f.outcome) return false;
+  }
+  if (f.channel && channelOf(c) !== f.channel) return false;
+  if (f.month && monthOf(c) !== f.month) return false;
+  if (f.milestone) {
+    if (f.milestone === 'hired') { if (!isHired(c)) return false; }
+    else if (f.milestone === 'hasSalary') { if (!(Number(c.salaryExpectation) > 0)) return false; }
+    else if (!c[f.milestone]) return false;
+  }
   if (f.q) {
     const hay = [c.name, c.email, c.phone, c.subject, c.role, c.jobTitle].join(' ').toLowerCase();
     if (!hay.includes(f.q.toLowerCase())) return false;
@@ -1221,6 +1305,7 @@ function renderList() {
       אחד כפילויות
     </label>
     <span style="color:var(--muted); font-size:12px">מוצגים ${shown.length} מתוך ${candidates.length}${hidden ? ` · ${hidden} כפילויות אוחדו` : ''}</span>
+    ${drillChip()}
   </div>`;
   // Columns follow her workbook, in her order — this is the sheet she works in
   // all day, so it should read the same here.
