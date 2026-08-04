@@ -228,13 +228,53 @@
       </select>
     </div>
     <div class="field"><label>סטטוס</label>
-      <select id="jStatus" style="width:100%; padding:7px">
-        <option value="open">פתוחה</option>
-        <option value="closed">סגורה</option>
-      </select>
+      <select id="jStatus" style="width:100%; padding:7px"></select>
     </div>
-    <div class="field"><label>מילות מפתח להתאמה (יישמש לניקוד בהמשך)</label><input type="text" id="jKeywords" placeholder="מופרדות בפסיק"></div>
-    <div class="field"><label>תיאור</label><textarea id="jDescription"></textarea></div>
+    <div class="row" style="gap:10px">
+      <div class="field" style="flex:1"><label>תאריך בקשה</label><input type="date" id="jRequestDate"></div>
+      <div class="field" style="flex:1"><label>תאריך איוש</label><input type="date" id="jFilledDate"></div>
+    </div>
+    <div class="field"><label>סיבה / הסבר (למשל: דחיית לקוח - מחיר גבוה)</label><input type="text" id="jStatusReason"></div>
+    <div class="field"><label>מועמד בתהליך</label><input type="text" id="jCandidateInProcess"></div>
+    <div class="field"><label>איש קשר אצל הלקוח</label><input type="text" id="jContact"></div>
+
+    <h3 style="margin-top:14px">תנאי המשרה</h3>
+    <div class="row" style="gap:10px">
+      <div class="field" style="flex:1"><label>מיקום (עיר/אתר/פרויקט)</label><input type="text" id="jLocation"></div>
+      <div class="field" style="flex:1"><label>שעות עבודה</label><input type="text" id="jWorkHours" placeholder="7:00-16:00"></div>
+    </div>
+    <div class="row" style="gap:10px">
+      <div class="field" style="flex:1"><label>היקף משרה</label><input type="text" id="jJobScope" placeholder="מלאה / חלקית"></div>
+      <div class="field" style="flex:1"><label>משמרות (שישי, לילה)</label><input type="text" id="jShifts"></div>
+    </div>
+    <div class="row" style="gap:10px">
+      <div class="field" style="flex:1"><label>מועד תחילת עבודה</label><input type="text" id="jStartDate" placeholder="מיידי"></div>
+      <div class="field" style="flex:1"><label>תקופת העסקה</label><input type="text" id="jPeriod" placeholder="קבוע / זמני / פרויקט"></div>
+    </div>
+    <div class="row" style="gap:10px">
+      <div class="field" style="flex:1"><label>טווח שכר</label><input type="text" id="jSalaryRange" placeholder="17-18K"></div>
+      <div class="field" style="flex:1"><label>רייט</label><input type="text" id="jRate"></div>
+    </div>
+    <div class="row" style="gap:14px">
+      <div class="checkrow"><input type="checkbox" id="jIncludesCar"> <label for="jIncludesCar" style="font-weight:400">כולל רכב</label></div>
+      <div class="checkrow"><input type="checkbox" id="jTravel"> <label for="jTravel" style="font-weight:400">נסיעות בין אתרים</label></div>
+    </div>
+
+    <h3 style="margin-top:14px">דרישות מקצועיות</h3>
+    <div class="hint">מסומן כחובה או יתרון. המערכת משתמשת בזה כדי לדרג מועמדים מהמאגר מול המשרה.</div>
+    <div id="jRequirements" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:6px; margin:8px 0"></div>
+    <div class="row" style="gap:10px">
+      <div class="field" style="flex:1"><label>שנות ניסיון</label><input type="text" id="jYearsExperience"></div>
+      <div class="field" style="flex:1"><label>שפה</label><input type="text" id="jLanguage"></div>
+    </div>
+    <div class="row" style="gap:10px">
+      <div class="field" style="flex:1"><label>בכפיפות ל / עבודה בצוות או לבד</label><input type="text" id="jReportsTo"></div>
+      <div class="field" style="flex:1"><label>סיווג בטחוני / תעודת יושר</label><input type="text" id="jSecurityClearance"></div>
+    </div>
+    <div class="field"><label>ציוד / ביגוד נלווה</label><input type="text" id="jEquipment"></div>
+    <div class="field"><label>מילות מפתח להתאמה</label><input type="text" id="jKeywords" placeholder="מופרדות בפסיק"></div>
+    <div class="field"><label>תיאור המשרה (כאן נמצאים הכישורים הרכים — משפיע על ההתאמה)</label><textarea id="jDescription"></textarea></div>
+    <div class="field"><label>כל דבר אחר</label><input type="text" id="jExtraNotes"></div>
     <div class="row">
       <button class="btn primary" onclick="saveJob()">שמור משרה</button>
       <button class="btn" id="jCancelBtn" onclick="resetJobForm()" style="display:none">ביטול עריכה</button>
@@ -300,6 +340,11 @@
     <span id="saveMsg" style="color:var(--green); font-size:12px; margin-inline-start:8px"></span>
   </div>
   <div class="panel">
+    <h3>ייבוא מהאקסל</h3>
+    <div class="hint">ייבוא חד-פעמי של קובץ ה-JSON שהומר מצ'קליסט הגיוסים (מועמדים + בקשות גיוס). רשומות שכבר קיימות ידולגו, שום דבר לא נמחק.</div>
+    <input type="file" id="workbookFile" accept=".json" onchange="importWorkbook(this)">
+  </div>
+  <div class="panel">
     <h3>ניקוי נתונים</h3>
     <div class="hint">מחיקת כל המועמדים השמורים (ההגדרות נשמרות).</div>
     <button class="btn" style="color:var(--red)" onclick="clearAll()">🗑 מחק את כל המועמדים</button>
@@ -317,8 +362,53 @@
       <select id="mJob" style="width:100%; padding:7px"></select>
     </div>
     <div class="field"><label>תפקיד (טקסט חופשי, אם אין משרה משויכת)</label><input type="text" id="mRole"></div>
+    <div class="row" style="gap:10px">
+      <div class="field" style="flex:1"><label>מחוז</label>
+        <select id="mRegion" style="width:100%; padding:7px"></select>
+      </div>
+      <div class="field" style="flex:1"><label>מגורים</label><input type="text" id="mCity"></div>
+    </div>
+    <div class="row" style="gap:10px">
+      <div class="field" style="flex:1"><label>ציפיות שכר (₪)</label>
+        <input type="number" id="mSalaryExpectation" dir="ltr" style="text-align:left" placeholder="20000">
+      </div>
+      <div class="field" style="flex:1"><label>היקף משרה</label>
+        <select id="mJobScope" style="width:100%; padding:7px">
+          <option value="">— לא צוין —</option><option value="מלאה">מלאה</option>
+          <option value="חלקית">חלקית</option><option value="מלאה/ חלקית">מלאה / חלקית</option>
+        </select>
+      </div>
+    </div>
+    <div class="row" style="gap:10px">
+      <div class="field" style="flex:1"><label>סוג העסקה</label>
+        <select id="mEmploymentType" style="width:100%; padding:7px">
+          <option value="">— לא צוין —</option><option value="שכיר">שכיר</option>
+          <option value="חשבונית">חשבונית</option>
+        </select>
+      </div>
+      <div class="field" style="flex:1"><label>מקור הגעה</label>
+        <select id="mSourceChannel" style="width:100%; padding:7px"></select>
+      </div>
+    </div>
     <div class="field"><label>מקור / הפניה (חבר מביא חבר)</label><input type="text" id="mReferral"></div>
-    <div class="field"><label>שלב</label>
+
+    <div style="border-top:1px solid var(--border); padding-top:10px; margin-top:6px">
+      <label style="display:block; font-size:12px; font-weight:600; margin-bottom:6px">התקדמות בתהליך</label>
+      <div class="hint" style="margin-bottom:6px">כל שלב עצמאי — אפשר לסמן ראיון ומשימה גם בלי שהקו"ח הועבר ללקוח.</div>
+      <div class="row" style="gap:14px; flex-wrap:wrap">
+        <div class="checkrow"><input type="checkbox" id="mInterviewedTeams"> <label for="mInterviewedTeams" style="font-weight:400">ראיון TEAMS</label></div>
+        <div class="checkrow"><input type="checkbox" id="mGotTask"> <label for="mGotTask" style="font-weight:400">קיבל משימה</label></div>
+        <div class="checkrow"><input type="checkbox" id="mSentToClient"> <label for="mSentToClient" style="font-weight:400">הועבר ללקוח</label></div>
+        <div class="checkrow"><input type="checkbox" id="mClientApproved"> <label for="mClientApproved" style="font-weight:400">אושר ע"י הלקוח</label></div>
+      </div>
+      <div class="hint" id="mTaskHint" style="display:none; color:var(--amber); margin-top:4px">משימה נדרשת רק במשרות רב-תחומי.</div>
+    </div>
+    <div class="field"><label>סטטוס</label>
+      <select id="mOutcomeStatus" style="width:100%; padding:7px"></select>
+    </div>
+    <div class="field"><label>תיאור / סיכום השיחה הראשונית</label><textarea id="mSummaryText"></textarea></div>
+    <div class="field"><label>תאריך שיחה</label><input type="date" id="mContactedAt"></div>
+    <div class="field"><label>שלב בלוח</label>
       <select class="stage" id="mStage" style="width:100%; padding:7px" onchange="toggleRejectFields()"></select>
     </div>
     <div id="mRejectBox" style="display:none">
@@ -389,6 +479,18 @@
   </div>
 </div>
 
+<!-- Match modal: who in the pool fits this request -->
+<div class="overlay" id="matchModal">
+  <div class="modal" style="max-width:760px">
+    <h3 id="matchTitle">🎯 מועמדים מתאימים מהמאגר</h3>
+    <div class="hint" style="margin-bottom:8px">
+      דירוג לפי דרישות המשרה (חובה/יתרון), מילות המפתח, תיאור המשרה, אזור וציפיות שכר.
+    </div>
+    <div id="matchBody"></div>
+    <div class="row"><button class="btn" onclick="closeMatchModal()">סגור</button></div>
+  </div>
+</div>
+
 <!-- Bulk import modal (many CV files at once, e.g. exported from a WhatsApp chat) -->
 <div class="overlay" id="bulkModal">
   <div class="modal" style="max-width:560px">
@@ -430,6 +532,40 @@ const STAGES = [
   { id: 'staffed',          label: '🎯 איוש' },
   { id: 'rejected',         label: '❌ נפסל' },
 ];
+
+// The recruiter's own outcome vocabulary, taken from the HBC checklist plus the
+// review meeting ("א\"מ" = אין מענה). Independent of the board stage: a candidate
+// can sit in any stage with any of these outcomes.
+const OUTCOME_STATUSES = [
+  'בברור', 'נקבע ראיון', 'קו"ח הועבר ללקוח', 'אושר ע"י הלקוח', 'גוייס/ה',
+  'צ"ש גבוהות', 'נפסל ע"י לקוח', 'לא תואמ/ת פרופיל', 'נפסל איזור ג"ג',
+  'הסיר/ה מועמדות', 'נשלח מכתב שלילה', 'לקוח ביטל בקשה', 'לא מחפש/ת עבודה',
+  'אין מענה', 'מועמד נטש תהליך',
+];
+
+// Where candidates come from — a closed list so the sources chart is meaningful.
+const SOURCE_CHANNELS = [
+  'JobMaster (JM)', 'דרושים', 'פייסבוק/ ווצאפ', 'לינקדאין', 'מאגר קו"ח',
+  'הפניה פנימית', 'אתר החברה', 'אחר',
+];
+
+const REGIONS = ['צפון', 'חיפה', 'מרכז', 'שפלה', 'שפלה / דרום', 'דרום', 'ירושלים', 'איו"ש'];
+
+// Client request lifecycle (was open/closed).
+const JOB_STATUSES = [
+  { id: 'awaiting',   label: 'ממתין לאיוש' },
+  { id: 'filled',     label: 'אויש' },
+  { id: 'not_filled', label: 'לא אויש' },
+  { id: 'frozen',     label: 'בהקפאה' },
+];
+
+// The professional requirements matrix the client fills in per request. Each is
+// marked חובה / יתרון, and drives both candidate matching and the job form.
+const REQUIREMENT_FIELDS = [
+  'בנייה ענפית', 'מדריך גובה', 'הכנת תוכנית בטיחות', 'הדרכה טובה', 'אש',
+  'איכות הסביבה', 'כימיה', 'ארגונומיה', 'קרינה בלתי מייננת', 'עזרה ראשונה', 'חשמל',
+];
+const REQUIREMENT_LEVELS = ['', 'חובה', 'יתרון'];
 
 // Common rejection reasons offered as quick presets in the candidate modal.
 const REJECT_REASONS = [
@@ -602,25 +738,141 @@ function renderStats() {
 }
 
 // Full per-stage breakdown for the dashboard tab ("real-time cut").
+/* ---------- Dashboard (mirrors the recruiter's own KPI sheet) ---------- */
+function pct(part, whole) { return whole ? Math.round((part / whole) * 1000) / 10 : 0; }
+
+function median(nums) {
+  if (!nums.length) return 0;
+  const s = [...nums].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid] : Math.round((s[mid - 1] + s[mid]) / 2);
+}
+
+function ils(n) { return n ? '₪' + Math.round(n).toLocaleString('he-IL') : '—'; }
+
+function kpi(value, label, hint) {
+  return `<div class="stat" style="min-width:150px">
+    <div class="num">${value}</div><div class="lbl">${label}</div>
+    ${hint ? `<div class="lbl" style="color:var(--muted);font-size:10px">${hint}</div>` : ''}
+  </div>`;
+}
+
+// Horizontal bars — no chart library, so the page stays a single static file.
+function barChart(rows, opts = {}) {
+  const max = Math.max(1, ...rows.map(r => r.value));
+  const color = opts.color || 'var(--accent)';
+  if (!rows.length) return '<div class="hint">אין נתונים להצגה.</div>';
+  return `<div style="display:flex; flex-direction:column; gap:6px">` + rows.map(r => `
+    <div style="display:flex; align-items:center; gap:8px; font-size:12px">
+      <div style="width:150px; flex-shrink:0; text-align:start">${esc(r.label)}</div>
+      <div style="flex:1; background:#eef0f4; border-radius:4px; overflow:hidden; height:18px">
+        <div style="width:${(r.value / max) * 100}%; background:${color}; height:100%"></div>
+      </div>
+      <div style="width:52px; text-align:start; color:var(--muted)">${r.value}${opts.suffix || ''}</div>
+    </div>`).join('') + '</div>';
+}
+
 function renderDashboard() {
   const wrap = document.getElementById('dashWrap');
   if (!wrap) return;
-  const n = pred => candidates.filter(pred).length;
-  const cards = STAGES.map(st => {
-    const count = n(c => c.stage === st.id);
-    return `<div class="stat" style="min-width:150px; cursor:pointer" onclick="switchTab('board')">
-      <div class="num">${count}</div><div class="lbl">${st.label}</div></div>`;
-  }).join('');
-  const lettersSent = n(c => c.rejectionLetterSent);
-  const byClient = n(c => c.rejectedBy === 'client');
-  const analyzed = n(c => c.ai);
-  const extra = `
-    <div class="stat" style="min-width:150px"><div class="num">${lettersSent}</div><div class="lbl">✉️ נשלחו מכתבי שלילה</div></div>
-    <div class="stat" style="min-width:150px"><div class="num">${byClient}</div><div class="lbl">נפסלו ע"י לקוח</div></div>
-    <div class="stat" style="min-width:150px"><div class="num">${analyzed}</div><div class="lbl">🤖 נותחו ב-AI</div></div>`;
-  wrap.innerHTML =
-    `<div class="panel"><h3>חתך לפי שלב</h3><div class="stats" style="margin:0">${cards}</div></div>` +
-    `<div class="panel"><h3>חתכים נוספים</h3><div class="stats" style="margin:0">${extra}</div></div>`;
+  // One row per person, so a candidate imported twice isn't counted twice.
+  const people = collapseDuplicates(candidates);
+  const total = people.length;
+  const n = pred => people.filter(pred).length;
+
+  // ---- candidate KPIs ----
+  const interviewed = n(c => c.interviewedTeams);
+  const toClient = n(c => c.sentToClient);
+  const approved = n(c => c.clientApproved);
+  const hired = n(c => c.stage === 'staffed' || (c.outcomeStatus || '').includes('גוייס'));
+  const salaries = people.map(c => Number(c.salaryExpectation)).filter(v => v > 0);
+  const avgSalary = salaries.length ? salaries.reduce((a, b) => a + b, 0) / salaries.length : 0;
+
+  const candidateKpis = [
+    kpi(total, 'סה"כ מועמדים'),
+    kpi(pct(interviewed, total) + '%', '% רואיינו (TEAMS)', `${interviewed} מועמדים`),
+    kpi(pct(toClient, total) + '%', '% הועברו ללקוח', `${toClient} מועמדים`),
+    kpi(pct(approved, total) + '%', '% אושרו ע"י הלקוח', `${approved} מועמדים`),
+    kpi(pct(hired, total) + '%', '% גויסו', `${hired} מועמדים`),
+    kpi(ils(avgSalary), 'ממוצע ציפיות שכר', `${salaries.length} עם נתון`),
+    kpi(ils(median(salaries)), 'חציון ציפיות שכר'),
+  ].join('');
+
+  // ---- job KPIs ----
+  const jn = st => jobs.filter(j => j.status === st).length;
+  const awaiting = jn('awaiting'), filled = jn('filled'),
+        notFilled = jn('not_filled'), frozen = jn('frozen');
+  const closed = filled + notFilled;
+  const fillTimes = jobs.map(j => j.fillMonths).filter(v => v != null && v > 0);
+  const avgFill = fillTimes.length ? fillTimes.reduce((a, b) => a + b, 0) / fillTimes.length : 0;
+
+  const jobKpis = [
+    kpi(jobs.length, 'סה"כ בקשות גיוס'),
+    kpi(awaiting, 'ממתינות לאיוש'),
+    kpi(filled, 'אוישו'),
+    kpi(notFilled, 'לא אוישו'),
+    kpi(avgFill ? avgFill.toFixed(2) : '—', 'ממוצע זמן גיוס (חודשים)'),
+    kpi(frozen, 'משרות בהקפאה'),
+    kpi(pct(filled, closed) + '%', '% הצלחת איוש', 'מתוך הסגורות'),
+  ].join('');
+
+  // ---- charts ----
+  const byMonth = new Map();
+  for (const c of people) {
+    const d = c.contactedAt || c.date || c.addedAt;
+    if (!d) continue;
+    const key = String(d).slice(0, 7);
+    byMonth.set(key, (byMonth.get(key) || 0) + 1);
+  }
+  const monthRows = [...byMonth.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([k, v]) => ({ label: k, value: v }));
+
+  const funnelRows = [
+    { label: 'סה"כ מועמדים', value: total },
+    { label: 'ראיון TEAMS', value: interviewed },
+    { label: 'קיבלו משימה', value: n(c => c.gotTask) },
+    { label: 'הועברו ללקוח', value: toClient },
+    { label: 'אושרו ע"י הלקוח', value: approved },
+    { label: 'גויסו', value: hired },
+  ];
+
+  const byStatus = new Map();
+  for (const c of people) {
+    const s = c.outcomeStatus || '(ללא סטטוס)';
+    byStatus.set(s, (byStatus.get(s) || 0) + 1);
+  }
+  const statusRows = [...byStatus.entries()].sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => ({ label: k, value: v }));
+
+  const bySource = new Map();
+  for (const c of people) {
+    const s = c.sourceChannel || c.referral ||
+      (c.source === 'outlook' ? 'Outlook' : c.source === 'gmail' ? 'Gmail' : '(לא ידוע)');
+    bySource.set(s, (bySource.get(s) || 0) + 1);
+  }
+  const sourceRows = [...bySource.entries()].sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => ({ label: k, value: v }));
+
+  const byClient = new Map();
+  for (const j of jobs) {
+    const k = j.clientName || '(ללא לקוח)';
+    byClient.set(k, (byClient.get(k) || 0) + 1);
+  }
+  const clientRows = [...byClient.entries()].sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => ({ label: k, value: v }));
+
+  const jobStatusRows = JOB_STATUSES.map(s => ({ label: s.label, value: jn(s.id) }));
+
+  wrap.innerHTML = `
+    <div class="panel"><h3>מועמדים</h3><div class="stats" style="margin:0">${candidateKpis}</div></div>
+    <div class="panel"><h3>משרות</h3><div class="stats" style="margin:0">${jobKpis}</div></div>
+    <div class="panel"><h3>משפך גיוס</h3>${barChart(funnelRows, { color: 'var(--green)' })}</div>
+    <div class="panel"><h3>התפלגות סטטוס מועמדים</h3>${barChart(statusRows, { color: 'var(--amber)' })}</div>
+    <div class="panel"><h3>מועמדים לאורך זמן</h3>${barChart(monthRows)}</div>
+    <div class="panel"><h3>מקורות הגעה</h3>${barChart(sourceRows, { color: 'var(--purple)' })}</div>
+    <div class="panel"><h3>סטטוס משרות</h3>${barChart(jobStatusRows)}</div>
+    <div class="panel"><h3>בקשות גיוס לפי לקוח</h3>${barChart(clientRows, { color: 'var(--purple)' })}</div>
+  `;
 }
 
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
@@ -913,7 +1165,7 @@ function fillStageSelect() {
     STAGES.map(s => `<option value="${s.id}">${s.label}</option>`).join('');
 }
 function fillJobSelect(selectedId) {
-  const open = jobs.filter(j => j.status === 'open' || j.id === selectedId);
+  const open = jobs.filter(j => j.status === 'awaiting' || j.id === selectedId);
   document.getElementById('mJob').innerHTML =
     '<option value="">— ללא משרה —</option>' +
     open.map(j => `<option value="${j.id}" ${j.id === selectedId ? 'selected' : ''}>#${esc(j.jobNumber)} ${esc(j.title)}${j.clientName ? ' · ' + esc(j.clientName) : ''}</option>`).join('');
@@ -955,9 +1207,37 @@ async function copyLetter() {
   catch { t.select(); document.execCommand('copy'); setStatus('✓ המכתב הועתק.'); }
   closeLetterModal();
 }
+// Selects whose options come from the shared vocabularies.
+function fillModalSelects() {
+  const opt = (v, sel) => `<option value="${esc(v)}" ${v === sel ? 'selected' : ''}>${esc(v || '— לא צוין —')}</option>`;
+  document.getElementById('mRegion').innerHTML = ['', ...REGIONS].map(r => opt(r)).join('');
+  document.getElementById('mSourceChannel').innerHTML = ['', ...SOURCE_CHANNELS].map(r => opt(r)).join('');
+  document.getElementById('mOutcomeStatus').innerHTML = ['', ...OUTCOME_STATUSES].map(r => opt(r)).join('');
+}
+
+// Fill the milestone/detail part of the modal from a candidate (or clear it).
+function fillModalDetails(c) {
+  const set = (id, val) => { document.getElementById(id).value = val ?? ''; };
+  const check = (id, val) => { document.getElementById(id).checked = !!val; };
+  set('mRegion', c?.region || ''); set('mCity', c?.city || '');
+  set('mSalaryExpectation', c?.salaryExpectation ?? '');
+  set('mJobScope', c?.jobScope || ''); set('mEmploymentType', c?.employmentType || '');
+  set('mSourceChannel', c?.sourceChannel || '');
+  set('mOutcomeStatus', c?.outcomeStatus || '');
+  set('mSummaryText', c?.summaryText || '');
+  set('mContactedAt', c?.contactedAt || '');
+  check('mInterviewedTeams', c?.interviewedTeams); check('mGotTask', c?.gotTask);
+  check('mSentToClient', c?.sentToClient); check('mClientApproved', c?.clientApproved);
+  // A task is only part of the multi-discipline track.
+  document.getElementById('mTaskHint').style.display =
+    c && c.jobTrack && c.jobTrack !== 'multi' ? '' : 'none';
+}
+
 function openAddModal() {
   editingId = null;
   fillStageSelect();
+  fillModalSelects();
+  fillModalDetails(null);
   fillJobSelect('');
   document.getElementById('modalTitle').textContent = 'הוספת מועמד';
   ['mName','mEmail','mPhone','mRole','mReferral','mNotes','mRejectReason'].forEach(i => document.getElementById(i).value = '');
@@ -975,8 +1255,11 @@ function openEditModal(id) {
   if (!c) return;
   editingId = id;
   fillStageSelect();
+  fillModalSelects();
+  fillModalDetails(c);
   fillJobSelect(c.jobId || '');
-  document.getElementById('modalTitle').textContent = 'עריכת מועמד';
+  document.getElementById('modalTitle').textContent =
+    'עריכת מועמד' + (c.doNotRehire ? '  ⛔ סומן "לא לגייס שוב"' : '');
   document.getElementById('mName').value = c.name;
   document.getElementById('mEmail').value = c.email;
   document.getElementById('mPhone').value = c.phone || '';
@@ -1147,9 +1430,84 @@ async function repairNames() {
   }
 }
 
+/* ---------- Match the pool against a job ---------- */
+// The direction the recruiter actually works in: a request lands and she wants
+// to know who she already has, before spending anything on an ad.
+async function matchJob(jobId) {
+  showBusy('🎯 מדרג מועמדים מהמאגר…');
+  let data;
+  try {
+    data = await api('/api/jobs/' + jobId + '/match', {
+      method: 'POST', body: JSON.stringify({ limit: 25 }),
+    });
+  } catch (err) {
+    hideBusy();
+    setStatus('שגיאה בדירוג מועמדים: ' + err.message, true);
+    return;
+  }
+  hideBusy();
+
+  document.getElementById('matchTitle').textContent =
+    `🎯 מועמדים מתאימים — #${data.job.jobNumber} ${data.job.title}` +
+    (data.job.clientName ? ` · ${data.job.clientName}` : '');
+
+  const rows = (data.results || []).map(r => {
+    const cls = r.score >= 70 ? 'score-hi' : r.score >= 40 ? 'score-mid' : 'score-lo';
+    return `<tr>
+      <td>
+        <b>${esc(r.name)}</b>${r.doNotRehire ? ' <span class="badge" style="background:var(--red-soft);color:var(--red)">⛔ לא לגייס</span>' : ''}
+        <div style="color:var(--muted); font-size:11px">
+          ${esc(r.role || '')}${r.city ? ' · ' + esc(r.city) : ''}${r.salaryExpectation ? ' · צ"ש ' + ils(r.salaryExpectation) : ''}
+        </div>
+      </td>
+      <td><span class="badge ${cls}">${r.score}</span></td>
+      <td style="font-size:11px">
+        ${r.matched.slice(0, 6).map(m => `<span class="badge crit">${esc(m)}</span>`).join(' ') || '<span style="color:var(--muted)">—</span>'}
+        ${r.missing.length ? `<div style="color:var(--red); margin-top:3px">חסר: ${esc(r.missing.join(', '))}</div>` : ''}
+        ${r.flags.length ? `<div style="color:var(--amber); margin-top:3px">⚠ ${esc(r.flags.join(' · '))}</div>` : ''}
+      </td>
+      <td><button class="btn small" onclick="closeMatchModal(); openEditModal('${r.candidateId}')">פתח</button></td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('matchBody').innerHTML = rows
+    ? `<table><thead><tr><th>מועמד</th><th>ציון</th><th>למה</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
+    : '<div class="empty">לא נמצאו מועמדים במאגר.</div>';
+  document.getElementById('matchModal').classList.add('show');
+}
+function closeMatchModal() { document.getElementById('matchModal').classList.remove('show'); }
+
+/* ---------- One-time import of the recruiter's workbook ---------- */
+async function importWorkbook(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  input.value = '';
+  let payload;
+  try {
+    payload = JSON.parse(await file.text());
+  } catch {
+    setStatus('הקובץ אינו JSON תקין.', true);
+    return;
+  }
+  const nc = (payload.candidates || []).length, nj = (payload.jobs || []).length;
+  if (!confirm(`לייבא ${nc} מועמדים ו-${nj} בקשות גיוס? רשומות שכבר קיימות ידולגו.`)) return;
+
+  showBusy('📊 מייבא נתונים מהאקסל…');
+  try {
+    const r = await api('/api/import', { method: 'POST', body: JSON.stringify(payload) });
+    await loadData();
+    hideBusy();
+    setStatus(`✓ יובאו ${r.candidatesCreated} מועמדים ו-${r.jobsCreated} משרות ` +
+      `(דולגו: ${r.candidatesSkipped} מועמדים, ${r.jobsSkipped} משרות).`);
+  } catch (err) {
+    hideBusy();
+    setStatus('שגיאה בייבוא: ' + err.message, true);
+  }
+}
+
 /* ---------- Bulk import (many CV files at once) ---------- */
 function openBulkImportModal() {
-  const open = jobs.filter(j => j.status === 'open');
+  const open = jobs.filter(j => j.status === 'awaiting');
   document.getElementById('bulkJob').innerHTML =
     '<option value="auto" selected>🤖 שיוך אוטומטי — שה-AI יחליט</option>' +
     open.map(j => `<option value="${j.id}">#${esc(j.jobNumber)} ${esc(j.title)}${j.clientName ? ' · ' + esc(j.clientName) : ''}</option>`).join('');
@@ -1263,10 +1621,20 @@ async function startBulkImport() {
 
 function modalPayload() {
   const v = id => document.getElementById(id).value.trim();
+  const chk = id => document.getElementById(id).checked;
   const stage = document.getElementById('mStage').value;
   return {
     name: v('mName'), email: v('mEmail'), phone: v('mPhone'),
     role: v('mRole'), referral: v('mReferral'),
+    region: v('mRegion'), city: v('mCity'),
+    salaryExpectation: v('mSalaryExpectation'),
+    jobScope: v('mJobScope'), employmentType: v('mEmploymentType'),
+    sourceChannel: v('mSourceChannel'),
+    interviewedTeams: chk('mInterviewedTeams'), gotTask: chk('mGotTask'),
+    sentToClient: chk('mSentToClient'), clientApproved: chk('mClientApproved'),
+    outcomeStatus: v('mOutcomeStatus'),
+    summaryText: document.getElementById('mSummaryText').value,
+    contactedAt: v('mContactedAt'),
     jobId: document.getElementById('mJob').value || null,
     stage, notes: document.getElementById('mNotes').value,
     rejectionReason: stage === 'rejected' ? v('mRejectReason') : '',
@@ -1492,9 +1860,10 @@ function renderJobs() {
       <td>${esc(j.title)}</td>
       <td>${esc(j.clientName || '')}</td>
       <td>${j.track ? esc(TRACK_LABELS[j.track] || j.track) : ''}</td>
-      <td>${j.status === 'open' ? 'פתוחה' : 'סגורה'}</td>
+      <td>${jobStatusLabel(j.status)}${j.fillMonths != null ? ` <span style="color:var(--muted);font-size:11px">(${j.fillMonths} ח')</span>` : ''}</td>
       <td>${count}</td>
-      <td><button class="btn small" onclick="editJob('${j.id}')">✏️</button>
+      <td><button class="btn small" onclick="matchJob('${j.id}')" title="מי מהמאגר מתאים למשרה הזו">🎯 התאמות</button>
+          <button class="btn small" onclick="editJob('${j.id}')">✏️</button>
           <button class="btn small" style="color:var(--red)" onclick="delJob('${j.id}')">🗑</button></td>
     </tr>`;
   }).join('');
@@ -1503,13 +1872,53 @@ function renderJobs() {
   </tr></thead><tbody>${rows}</tbody></table>`;
 }
 
+function jobStatusLabel(id) {
+  return (JOB_STATUSES.find(s => s.id === id) || {}).label || id || '';
+}
+
+// API field -> input id, for the many plain-text fields on a client request.
+const JOB_FIELD_IDS = {
+  requestDate: 'jRequestDate', filledDate: 'jFilledDate', statusReason: 'jStatusReason',
+  candidateInProcess: 'jCandidateInProcess', contact: 'jContact', location: 'jLocation',
+  workHours: 'jWorkHours', jobScope: 'jJobScope', shifts: 'jShifts',
+  startDate: 'jStartDate', period: 'jPeriod', salaryRange: 'jSalaryRange', rate: 'jRate',
+  yearsExperience: 'jYearsExperience', language: 'jLanguage', reportsTo: 'jReportsTo',
+  securityClearance: 'jSecurityClearance', equipment: 'jEquipment', extraNotes: 'jExtraNotes',
+};
+
+function renderRequirementInputs(current) {
+  document.getElementById('jRequirements').innerHTML = REQUIREMENT_FIELDS.map(r => `
+    <label style="display:flex; align-items:center; gap:6px; font-size:12px">
+      <span style="flex:1">${esc(r)}</span>
+      <select data-req="${esc(r)}" style="padding:4px">
+        ${REQUIREMENT_LEVELS.map(l =>
+          `<option value="${esc(l)}" ${(current || {})[r] === l ? 'selected' : ''}>${l || '—'}</option>`
+        ).join('')}
+      </select>
+    </label>`).join('');
+}
+
+function readRequirements() {
+  const out = {};
+  document.querySelectorAll('#jRequirements select[data-req]').forEach(sel => {
+    if (sel.value) out[sel.dataset.req] = sel.value;
+  });
+  return out;
+}
+
 function resetJobForm() {
   editingJobId = null;
   document.getElementById('jobFormTitle').textContent = 'הקמת משרה חדשה';
-  ['jTitle','jKeywords','jDescription'].forEach(i => document.getElementById(i).value = '');
+  ['jTitle', 'jKeywords', 'jDescription', ...Object.values(JOB_FIELD_IDS)]
+    .forEach(i => { const el = document.getElementById(i); if (el) el.value = ''; });
   document.getElementById('jClient').value = '';
   document.getElementById('jTrack').value = '';
-  document.getElementById('jStatus').value = 'open';
+  document.getElementById('jStatus').innerHTML =
+    JOB_STATUSES.map(s => `<option value="${s.id}">${s.label}</option>`).join('');
+  document.getElementById('jStatus').value = 'awaiting';
+  document.getElementById('jIncludesCar').checked = false;
+  document.getElementById('jTravel').checked = false;
+  renderRequirementInputs({});
   document.getElementById('jCancelBtn').style.display = 'none';
 }
 
@@ -1521,9 +1930,18 @@ function editJob(id) {
   document.getElementById('jTitle').value = j.title;
   fillJobClientSelect(j.clientId || '');
   document.getElementById('jTrack').value = j.track || '';
+  document.getElementById('jStatus').innerHTML =
+    JOB_STATUSES.map(s => `<option value="${s.id}">${s.label}</option>`).join('');
   document.getElementById('jStatus').value = j.status;
   document.getElementById('jKeywords').value = j.keywords || '';
   document.getElementById('jDescription').value = j.description || '';
+  for (const [key, id] of Object.entries(JOB_FIELD_IDS)) {
+    const el = document.getElementById(id);
+    if (el) el.value = j[key] || '';
+  }
+  document.getElementById('jIncludesCar').checked = !!j.includesCar;
+  document.getElementById('jTravel').checked = !!j.travelBetweenSites;
+  renderRequirementInputs(j.requirements || {});
   document.getElementById('jCancelBtn').style.display = '';
   window.scrollTo(0, 0);
 }
@@ -1538,7 +1956,11 @@ async function saveJob() {
     status: document.getElementById('jStatus').value,
     keywords: v('jKeywords'),
     description: document.getElementById('jDescription').value,
+    requirements: readRequirements(),
+    includesCar: document.getElementById('jIncludesCar').checked,
+    travelBetweenSites: document.getElementById('jTravel').checked,
   };
+  for (const [key, id] of Object.entries(JOB_FIELD_IDS)) payload[key] = v(id);
   try {
     if (editingJobId) {
       const updated = await api('/api/jobs/' + editingJobId, { method: 'PATCH', body: JSON.stringify(payload) });

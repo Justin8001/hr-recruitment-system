@@ -27,7 +27,8 @@ const REJECTED_BY = ['us', 'client'];
 // (and optionally its job). The flat shape keeps the existing board working.
 const SELECT_CANDIDATE =
   `SELECT a.*, p.name, p.email, p.phone, p.referral,
-          j.job_number, j.title AS job_title
+          p.region, p.city, p.national_id, p.do_not_rehire, p.do_not_rehire_reason,
+          j.job_number, j.title AS job_title, j.track AS job_track
    FROM applications a
    JOIN people p ON p.id = a.person_id
    LEFT JOIN jobs j ON j.id = a.job_id`;
@@ -42,6 +43,25 @@ function rowToCandidate(r: any) {
     email: r.email ?? '',
     phone: r.phone ?? '',
     referral: r.referral ?? '',
+    region: r.region ?? '',
+    city: r.city ?? '',
+    nationalId: r.national_id ?? '',
+    doNotRehire: !!r.do_not_rehire,
+    doNotRehireReason: r.do_not_rehire_reason ?? '',
+    // Independent process milestones — a candidate can be interviewed and given
+    // a task while still not passed on to the client.
+    interviewedTeams: !!r.interviewed_teams,
+    gotTask: !!r.got_task,
+    sentToClient: !!r.sent_to_client,
+    clientApproved: !!r.client_approved,
+    outcomeStatus: r.outcome_status ?? '',
+    salaryExpectation: r.salary_expectation != null ? Number(r.salary_expectation) : null,
+    jobScope: r.job_scope ?? '',
+    employmentType: r.employment_type ?? '',
+    sourceChannel: r.source_channel ?? '',
+    summaryText: r.summary_text ?? '',
+    contactedAt: r.contacted_at ? new Date(r.contacted_at).toISOString().slice(0, 10) : '',
+    jobTrack: r.job_track ?? '',
     subject: r.subject ?? '',
     snippet: r.snippet ?? '',
     date: r.email_date ? new Date(r.email_date).toISOString() : '',
@@ -173,11 +193,30 @@ router.post('/', asyncHandler(async (req, res) => {
       person = await findOrCreatePerson(client, { name, email, phone, referral });
     }
 
+    const b = req.body ?? {};
+    if (b.region || b.city || b.nationalId) {
+      await client.query(
+        `UPDATE people SET region = COALESCE($2, region), city = COALESCE($3, city),
+                           national_id = COALESCE($4, national_id)
+         WHERE id = $1`,
+        [person.id, b.region || null, b.city || null, b.nationalId || null]
+      );
+    }
+
+    const salary = Number(b.salaryExpectation);
     const inserted = await client.query(
-      `INSERT INTO applications (person_id, job_id, source, role, stage, notes)
-       VALUES ($1, $2, 'manual', $3, $4, $5)
+      `INSERT INTO applications
+         (person_id, job_id, source, role, stage, notes,
+          salary_expectation, job_scope, employment_type, source_channel,
+          summary_text, contacted_at, outcome_status)
+       VALUES ($1, $2, 'manual', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        RETURNING id`,
-      [person.id, jobId ? Number(jobId) : null, role ?? '', finalStage, notes ?? '']
+      [
+        person.id, jobId ? Number(jobId) : null, role ?? '', finalStage, notes ?? '',
+        b.salaryExpectation === '' || b.salaryExpectation === undefined || Number.isNaN(salary) ? null : salary,
+        b.jobScope || null, b.employmentType || null, b.sourceChannel || null,
+        b.summaryText || null, b.contactedAt || null, b.outcomeStatus || null
+      ]
     );
     const result = await client.query(`${SELECT_CANDIDATE} WHERE a.id = $1`, [inserted.rows[0].id]);
     await client.query('COMMIT');
@@ -221,6 +260,21 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     if (b.rejectionReason !== undefined) setA('rejection_reason', b.rejectionReason);
     if (b.rejectedBy !== undefined) setA('rejected_by', b.rejectedBy || null);
     if (b.rejectionLetterSent !== undefined) setA('rejection_letter_sent', !!b.rejectionLetterSent);
+    // Process milestones and the intro-call details the recruiter records.
+    if (b.interviewedTeams !== undefined) setA('interviewed_teams', !!b.interviewedTeams);
+    if (b.gotTask !== undefined) setA('got_task', !!b.gotTask);
+    if (b.sentToClient !== undefined) setA('sent_to_client', !!b.sentToClient);
+    if (b.clientApproved !== undefined) setA('client_approved', !!b.clientApproved);
+    if (b.outcomeStatus !== undefined) setA('outcome_status', b.outcomeStatus || null);
+    if (b.salaryExpectation !== undefined) {
+      const n = Number(b.salaryExpectation);
+      setA('salary_expectation', b.salaryExpectation === '' || Number.isNaN(n) ? null : n);
+    }
+    if (b.jobScope !== undefined) setA('job_scope', b.jobScope || null);
+    if (b.employmentType !== undefined) setA('employment_type', b.employmentType || null);
+    if (b.sourceChannel !== undefined) setA('source_channel', b.sourceChannel || null);
+    if (b.summaryText !== undefined) setA('summary_text', b.summaryText);
+    if (b.contactedAt !== undefined) setA('contacted_at', b.contactedAt || null);
     if (aFields.length) {
       aValues.push(req.params.id);
       await client.query(
@@ -237,6 +291,11 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     if (b.email !== undefined) setP('email', normalizeEmail(b.email));
     if (b.phone !== undefined) setP('phone', normalizePhone(b.phone));
     if (b.referral !== undefined) setP('referral', b.referral);
+    if (b.region !== undefined) setP('region', b.region || null);
+    if (b.city !== undefined) setP('city', b.city || null);
+    if (b.nationalId !== undefined) setP('national_id', b.nationalId || null);
+    if (b.doNotRehire !== undefined) setP('do_not_rehire', !!b.doNotRehire);
+    if (b.doNotRehireReason !== undefined) setP('do_not_rehire_reason', b.doNotRehireReason || null);
     if (pFields.length) {
       pValues.push(personId);
       await client.query(
@@ -351,7 +410,7 @@ router.post('/:id/analyze', asyncHandler(async (req, res) => {
         `SELECT j.id, j.job_number, j.title, j.keywords, j.description,
                 c.name AS client_name, c.looking_for AS client_looking_for
          FROM jobs j LEFT JOIN clients c ON c.id = j.client_id
-         WHERE j.status = 'open'
+         WHERE j.status = 'awaiting'
          ORDER BY j.created_at DESC`
       )
     : null;

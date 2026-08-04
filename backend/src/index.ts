@@ -9,6 +9,7 @@ import settingsRoutes from './routes/settings.js';
 import oauthRoutes from './routes/oauth.js';
 import connectionRoutes from './routes/connections.js';
 import scanRoutes from './routes/scan.js';
+import importRoutes from './routes/importData.js';
 
 const app = express();
 
@@ -29,6 +30,7 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/oauth', oauthRoutes);
 app.use('/api/connections', connectionRoutes);
 app.use('/api/scan', scanRoutes);
+app.use('/api/import', importRoutes);
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(err);
