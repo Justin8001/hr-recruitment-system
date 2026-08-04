@@ -141,6 +141,17 @@
   .modal .row { display: flex; gap: 8px; justify-content: flex-start; margin-top: 14px; }
   .status-line { font-size: 12px; color: var(--muted); min-height: 18px; margin-bottom: 10px; }
   .status-line.err { color: var(--red); }
+  /* Toast — the status line sits at the top of the page, too far from a button
+     pressed inside a long form for the feedback to be noticed. */
+  #toast {
+    position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(10px);
+    background: #1c2430; color: #fff; padding: 12px 22px; border-radius: 10px;
+    font-size: 14px; font-weight: 600; box-shadow: 0 6px 24px rgba(0,0,0,.28);
+    opacity: 0; pointer-events: none; transition: opacity .18s, transform .18s;
+    z-index: 200; max-width: 90vw; text-align: center;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  #toast.err { background: var(--red); }
   .empty { text-align: center; color: var(--muted); padding: 40px 0; font-size: 13px; }
   .spin { display: inline-block; animation: rot 1s linear infinite; }
   @keyframes rot { to { transform: rotate(360deg); } }
@@ -504,6 +515,8 @@
     </div>
   </div>
 </div>
+
+<div id="toast"></div>
 
 <!-- Match modal: who in the pool fits this request -->
 <div class="overlay" id="matchModal">
@@ -1467,9 +1480,8 @@ function showLetter(title, text) {
 }
 function closeLetterModal() { document.getElementById('letterModal').classList.remove('show'); }
 async function copyLetter() {
-  const t = document.getElementById('letterText');
-  try { await navigator.clipboard.writeText(t.value); setStatus('✓ המכתב הועתק — הדבק באאוטלוק (Cmd+V).'); }
-  catch { t.select(); document.execCommand('copy'); setStatus('✓ המכתב הועתק.'); }
+  await copyText(document.getElementById('letterText').value,
+                 '✓ המכתב הועתק בהצלחה — הדבק באאוטלוק (Cmd+V)');
   closeLetterModal();
 }
 // Selects whose options come from the shared vocabularies.
@@ -2658,9 +2670,20 @@ function jobToText(j) {
   return lines.join('\n');
 }
 
+let toastTimer;
+function showToast(msg, isError) {
+  const el = document.getElementById('toast');
+  if (!el) return;
+  el.textContent = msg;
+  el.className = 'show' + (isError ? ' err' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = ''; }, 2800);
+}
+
 async function copyText(text, okMsg) {
   try {
     await navigator.clipboard.writeText(text);
+    showToast(okMsg);
     setStatus(okMsg);
   } catch {
     // Clipboard API needs a secure context and permission; fall back to a
@@ -2671,9 +2694,15 @@ async function copyText(text, okMsg) {
     ta.style.opacity = '0';
     document.body.appendChild(ta);
     ta.select();
-    try { document.execCommand('copy'); setStatus(okMsg); }
-    catch { setStatus('לא ניתן להעתיק אוטומטית — סמן והעתק ידנית.', true); }
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch { ok = false; }
     document.body.removeChild(ta);
+    if (ok) { showToast(okMsg); setStatus(okMsg); }
+    else {
+      const msg = 'ההעתקה נחסמה בדפדפן — סמן את הטקסט והעתק ידנית.';
+      showToast(msg, true);
+      setStatus(msg, true);
+    }
   }
 }
 
@@ -2682,7 +2711,7 @@ function copyJobFormText() {
   const p = jobFormPayload();
   if (!p.title) { alert('נא להזין כותרת משרה'); return; }
   const text = jobToText(p);
-  copyText(text, `✓ פרטי המשרה הועתקו (${text.split('\n').length} שורות) — הדבק במחולל המודעות.`);
+  copyText(text, `✓ הטקסט הועתק בהצלחה — ${text.split('\n').length} שורות`);
 }
 
 /** Copy a job straight from its row in the table. */
@@ -2690,7 +2719,7 @@ function copyJobText(id) {
   const j = jobs.find(x => x.id === id);
   if (!j) return;
   const text = jobToText(j);
-  copyText(text, `✓ "${j.title}" הועתק כטקסט — הדבק במחולל המודעות.`);
+  copyText(text, `✓ הטקסט הועתק בהצלחה — ${j.title}`);
 }
 
 /** The job as currently typed into the form (used for saving and for export). */
