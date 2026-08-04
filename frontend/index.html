@@ -786,20 +786,11 @@ function renderToday() {
   const people = collapseDuplicates(candidates);
   const since = sessionSince || null;
 
-  // New arrivals since the last visit — the counter she explicitly asked for.
-  const isNew = c => {
-    const t = c.addedAt || c.date;
-    return since && t && new Date(t) > since;
-  };
-  const newOnes = people.filter(isNew);
-
-  const waiting = people.filter(c =>
-    !['staffed', 'rejected'].includes(c.stage) &&
-    (!c.outcomeStatus || c.outcomeStatus === 'בברור'));
-
-  const withClient = people.filter(c =>
-    c.sentToClient && !c.clientApproved &&
-    !['staffed', 'rejected'].includes(c.stage));
+  // The same predicates the drill-down filters use, so a card and the list it
+  // opens can never disagree.
+  const newOnes = people.filter(LIST_PRESETS.newSince.test);
+  const waiting = people.filter(LIST_PRESETS.waiting.test);
+  const withClient = people.filter(LIST_PRESETS.withClient.test);
 
   const openJobs = jobs.filter(j => j.status === 'awaiting');
 
@@ -809,10 +800,10 @@ function renderToday() {
 
   wrap.innerHTML = `
     <div class="stats" style="margin-bottom:12px">
-      ${kpi(newOnes.length, 'מועמדים חדשים', sinceText)}
-      ${kpi(waiting.length, 'ממתינים לטיפול', 'ללא סטטוס / בבירור')}
-      ${kpi(withClient.length, 'אצל הלקוח', 'הועברו וטרם התקבלה החלטה')}
-      ${kpi(openJobs.length, 'משרות ממתינות לאיוש')}
+      ${kpi(newOnes.length, 'מועמדים חדשים', sinceText, drillCall('drillToCandidates', 'preset', 'newSince'))}
+      ${kpi(waiting.length, 'ממתינים לטיפול', 'ללא סטטוס / בבירור', drillCall('drillToCandidates', 'preset', 'waiting'))}
+      ${kpi(withClient.length, 'אצל הלקוח', 'הועברו וטרם התקבלה החלטה', drillCall('drillToCandidates', 'preset', 'withClient'))}
+      ${kpi(openJobs.length, 'משרות ממתינות לאיוש', '', drillCall('drillToJobs', 'status', 'awaiting'))}
     </div>
 
     ${todaySection('🆕 נכנסו מאז הכניסה האחרונה', newOnes.slice(0, 15),
@@ -844,11 +835,12 @@ function renderStats() {
   const active = n(c => !['staffed', 'rejected'].includes(c.stage));
   const interviews = n(c => ['phone', 'frontal', 'client_interview'].includes(c.stage));
   const staffed = n(c => c.stage === 'staffed');
-  el.innerHTML = `
-    <div class="stat"><div class="num">${candidates.length}</div><div class="lbl">סה"כ מועמדים</div></div>
-    <div class="stat"><div class="num">${active}</div><div class="lbl">בתהליך פעיל</div></div>
-    <div class="stat"><div class="num">${interviews}</div><div class="lbl">בשלבי ראיונות</div></div>
-    <div class="stat"><div class="num">${staffed}</div><div class="lbl">אויישו</div></div>`;
+  el.innerHTML = [
+    kpi(candidates.length, 'סה"כ מועמדים', '', "drillToCandidates('', '')"),
+    kpi(active, 'בתהליך פעיל', '', drillCall('drillToCandidates', 'preset', 'active')),
+    kpi(interviews, 'בשלבי ראיונות', '', drillCall('drillToCandidates', 'preset', 'interviews')),
+    kpi(staffed, 'אויישו', '', drillCall('drillToCandidates', 'preset', 'staffed')),
+  ].join('');
 }
 
 // Full per-stage breakdown for the dashboard tab ("real-time cut").
@@ -1152,7 +1144,18 @@ function renderBoard() {
 
 // List filters. Kept in module state so re-renders (e.g. a stage change) don't
 // throw the user back to the full 400-row table.
-const EMPTY_LIST_FILTERS = { q: '', source: '', analyzed: '', outcome: '', milestone: '', channel: '', month: '' };
+const EMPTY_LIST_FILTERS = { q: '', source: '', analyzed: '', outcome: '', milestone: '', channel: '', month: '', preset: '' };
+
+// Named cuts behind the header counters and the morning screen, so those
+// figures open the same set they counted.
+const LIST_PRESETS = {
+  active:     { label: 'בתהליך פעיל',            test: c => !['staffed', 'rejected'].includes(c.stage) },
+  interviews: { label: 'בשלבי ראיונות',          test: c => ['phone', 'frontal', 'client_interview'].includes(c.stage) },
+  staffed:    { label: 'אויישו',                  test: c => c.stage === 'staffed' },
+  waiting:    { label: 'ממתינים לטיפול',          test: c => !['staffed', 'rejected'].includes(c.stage) && (!c.outcomeStatus || c.outcomeStatus === 'בברור') },
+  withClient: { label: 'אצל הלקוח — ללא החלטה',   test: c => c.sentToClient && !c.clientApproved && !['staffed', 'rejected'].includes(c.stage) },
+  newSince:   { label: 'נכנסו מאז הכניסה האחרונה', test: c => sessionSince && (c.addedAt || c.date) && new Date(c.addedAt || c.date) > sessionSince },
+};
 let listFilters = { ...EMPTY_LIST_FILTERS };
 
 function setListFilter(key, value) {
@@ -1202,7 +1205,7 @@ function drillToJobs(key, value) {
 }
 
 function clearListDrill() {
-  Object.assign(listFilters, { outcome: '', milestone: '', channel: '', month: '' });
+  Object.assign(listFilters, { outcome: '', milestone: '', channel: '', month: '', preset: '' });
   renderList();
 }
 
@@ -1212,7 +1215,8 @@ function drillChip() {
     f.outcome ? `סטטוס: ${f.outcome}` :
     f.milestone ? MILESTONE_FILTERS[f.milestone] || f.milestone :
     f.channel ? `מקור: ${f.channel}` :
-    f.month ? `חודש: ${f.month}` : '';
+    f.month ? `חודש: ${f.month}` :
+    f.preset ? (LIST_PRESETS[f.preset] || {}).label || f.preset : '';
   if (!label) return '';
   return `<span class="badge" style="background:var(--accent-soft); color:var(--accent); cursor:pointer"
      onclick="clearListDrill()" title="נקה סינון">🔎 ${esc(label)} ✕</span>`;
@@ -1265,6 +1269,7 @@ function matchesListFilters(c) {
   }
   if (f.channel && channelOf(c) !== f.channel) return false;
   if (f.month && monthOf(c) !== f.month) return false;
+  if (f.preset && LIST_PRESETS[f.preset] && !LIST_PRESETS[f.preset].test(c)) return false;
   if (f.milestone) {
     if (f.milestone === 'hired') { if (!isHired(c)) return false; }
     else if (f.milestone === 'hasSalary') { if (!(Number(c.salaryExpectation) > 0)) return false; }
