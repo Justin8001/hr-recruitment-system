@@ -296,6 +296,8 @@
     <div class="field"><label>כל דבר אחר</label><input type="text" id="jExtraNotes"></div>
     <div class="row">
       <button class="btn primary" onclick="saveJob()">שמור משרה</button>
+      <button class="btn" onclick="copyJobFormText()"
+              title="העתקת פרטי המשרה כטקסט נקי, להדבקה במחולל מודעות">📋 העתק כטקסט למודעה</button>
       <button class="btn" id="jCancelBtn" onclick="resetJobForm()" style="display:none">ביטול עריכה</button>
       <span id="jobMsg" style="color:var(--green); font-size:12px; margin-inline-start:8px"></span>
     </div>
@@ -2516,6 +2518,7 @@ function renderJobs() {
       <td>${count}</td>
       <td style="white-space:nowrap">
         <button class="btn small" onclick="matchJob('${j.id}')" title="מי מהמאגר מתאים למשרה הזו">🎯</button>
+        <button class="btn small" onclick="copyJobText('${j.id}')" title="העתק כטקסט למחולל מודעות">📋</button>
         <button class="btn small" onclick="editJob('${j.id}')">✏️</button>
         <button class="btn small" style="color:var(--red)" onclick="delJob('${j.id}')">🗑</button>
       </td>
@@ -2603,12 +2606,101 @@ function editJob(id) {
   toggleJobForm(true);
 }
 
-async function saveJob() {
+/**
+ * The job as plain text, for pasting into an ad-writing tool.
+ *
+ * Only fields that were actually filled in, with no interface wording — copying
+ * the form itself dragged along every hint and label, which had to be cleaned
+ * up by hand before it was usable.
+ */
+function jobToText(j) {
+  const lines = [];
+  const add = (label, value) => {
+    const v = (value ?? '').toString().trim();
+    if (!v) return;
+    // Some fields carry the label as their value ("סיווג בטחוני: סיווג בטחוני").
+    lines.push(v === label ? v : `${label}: ${v}`);
+  };
+  const joinFilled = (...pairs) => {
+    const parts = pairs.filter(([, v]) => (v ?? '').toString().trim())
+      .map(([k, v]) => `${k}: ${String(v).trim()}`);
+    if (parts.length) lines.push(parts.join(' | '));
+  };
+
+  lines.push(j.clientName ? `${j.title} — ${j.clientName}` : String(j.title || ''));
+  add('מיקום', j.location);
+  joinFilled(['היקף', j.jobScope], ['שעות', j.workHours], ['משמרות', j.shifts]);
+  joinFilled(['תחילת עבודה', j.startDate], ['תקופה', j.period]);
+  joinFilled(['טווח שכר', j.salaryRange], ['רייט', j.rate]);
+
+  const perks = [];
+  if (j.includesCar === true) perks.push('כולל רכב');
+  if (j.travelBetweenSites === true) perks.push('נסיעות בין אתרים');
+  if (perks.length) lines.push(perks.join(' | '));
+
+  joinFilled(['שנות ניסיון', j.yearsExperience], ['שפה', j.language]);
+
+  const must = [], nice = [];
+  for (const [req, level] of Object.entries(j.requirements || {})) {
+    const l = String(level || '').trim();
+    if (!l) continue;
+    (['חובה', 'V', 'v', 'כן', '1'].includes(l) ? must : nice).push(req);
+  }
+  if (must.length) lines.push('דרישות חובה: ' + must.join(', '));
+  if (nice.length) lines.push('יתרון: ' + nice.join(', '));
+
+  add('כישורים נוספים', j.keywords);
+  add('כפיפות', j.reportsTo);
+  add('סיווג בטחוני', j.securityClearance);
+  add('ציוד/ביגוד', j.equipment);
+  add('תיאור', j.description);
+  add('הערות', j.extraNotes);
+  return lines.join('\n');
+}
+
+async function copyText(text, okMsg) {
+  try {
+    await navigator.clipboard.writeText(text);
+    setStatus(okMsg);
+  } catch {
+    // Clipboard API needs a secure context and permission; fall back to a
+    // temporary textarea so the button still works.
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); setStatus(okMsg); }
+    catch { setStatus('לא ניתן להעתיק אוטומטית — סמן והעתק ידנית.', true); }
+    document.body.removeChild(ta);
+  }
+}
+
+/** Copy the job open in the form (works before it has been saved). */
+function copyJobFormText() {
+  const p = jobFormPayload();
+  if (!p.title) { alert('נא להזין כותרת משרה'); return; }
+  const text = jobToText(p);
+  copyText(text, `✓ פרטי המשרה הועתקו (${text.split('\n').length} שורות) — הדבק במחולל המודעות.`);
+}
+
+/** Copy a job straight from its row in the table. */
+function copyJobText(id) {
+  const j = jobs.find(x => x.id === id);
+  if (!j) return;
+  const text = jobToText(j);
+  copyText(text, `✓ "${j.title}" הועתק כטקסט — הדבק במחולל המודעות.`);
+}
+
+/** The job as currently typed into the form (used for saving and for export). */
+function jobFormPayload() {
   const v = id => document.getElementById(id).value.trim();
-  if (!v('jTitle')) { alert('נא להזין כותרת משרה'); return; }
+  const clientSel = document.getElementById('jClient');
   const payload = {
     title: v('jTitle'),
-    clientId: document.getElementById('jClient').value || null,
+    clientId: clientSel.value || null,
+    clientName: clientSel.selectedOptions[0] ? clientSel.selectedOptions[0].textContent.trim() : '',
     track: document.getElementById('jTrack').value || '',
     status: document.getElementById('jStatus').value,
     keywords: v('jKeywords'),
@@ -2618,6 +2710,13 @@ async function saveJob() {
     travelBetweenSites: document.getElementById('jTravel').checked,
   };
   for (const [key, id] of Object.entries(JOB_FIELD_IDS)) payload[key] = v(id);
+  return payload;
+}
+
+async function saveJob() {
+  const v = id => document.getElementById(id).value.trim();
+  if (!v('jTitle')) { alert('נא להזין כותרת משרה'); return; }
+  const payload = jobFormPayload();
   try {
     if (editingJobId) {
       const updated = await api('/api/jobs/' + editingJobId, { method: 'PATCH', body: JSON.stringify(payload) });
