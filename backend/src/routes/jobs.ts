@@ -168,6 +168,7 @@ router.post('/:id/match', asyncHandler(async (req, res) => {
   const cr = await pool.query(
     `SELECT DISTINCT ON (a.person_id)
             a.id, a.role, a.salary_expectation, a.ai, a.stage, a.outcome_status,
+            a.summary_text, a.notes,
             p.name, p.region, p.city, p.do_not_rehire
      FROM applications a JOIN people p ON p.id = a.person_id
      ORDER BY a.person_id, (a.ai IS NOT NULL) DESC, a.added_at DESC`
@@ -180,6 +181,8 @@ router.post('/:id/match', asyncHandler(async (req, res) => {
     region: r.region ?? '',
     city: r.city ?? '',
     salaryExpectation: r.salary_expectation != null ? Number(r.salary_expectation) : null,
+    summaryText: r.summary_text ?? '',
+    notes: r.notes ?? '',
     ai: r.ai
   }));
   const byId = new Map(cr.rows.map(r => [String(r.id), r]));

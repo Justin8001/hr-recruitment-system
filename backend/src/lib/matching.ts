@@ -29,6 +29,9 @@ export interface CandidateForMatch {
   region?: string;
   city?: string;
   salaryExpectation?: number | null;
+  /** The recruiter's own write-up of the intro call. */
+  summaryText?: string;
+  notes?: string;
   ai?: any;
 }
 
@@ -40,21 +43,51 @@ export interface MatchResult {
   flags: string[];            // things the recruiter should see before calling
 }
 
-/** Everything we know about a candidate, as one searchable blob. */
+/**
+ * Everything we know about a candidate, as one searchable blob.
+ *
+ * Candidates imported from the recruiter's workbook have no CV and therefore no
+ * AI analysis — only what she typed after the intro call. That write-up is the
+ * richest thing we hold on them ("ענפית בניה, אנגלית בסיסית, מסיים בודק מוסמך"),
+ * so it has to feed the match or the whole imported pool ranks near zero.
+ */
 function candidateText(c: CandidateForMatch): string {
   const a = c.ai || {};
-  return [
-    c.role, c.region, c.city,
+  return norm([
+    c.role, c.region, c.city, c.summaryText, c.notes,
     a.summary, a.profession, a.location,
     ...(a.certifications || []),
     ...(a.strengths || []),
     ...(a.matchedKeywords || [])
-  ].filter(Boolean).join(' ').toLowerCase();
+  ].filter(Boolean).join(' '));
+}
+
+/**
+ * Hebrew spelling drifts between the client's requirement list and the
+ * recruiter's notes — "בנייה" vs "בניה", quotes in "צ\"ש" — so both sides are
+ * flattened before comparing.
+ */
+function norm(s: string): string {
+  return (s || '').toLowerCase()
+    .replace(/["'`׳״]/g, '')
+    .replace(/יי/g, 'י')
+    .replace(/וו/g, 'ו')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function has(text: string, term: string): boolean {
-  const t = term.trim().toLowerCase();
-  return t.length > 1 && text.includes(t);
+  const t = norm(term);
+  if (t.length < 2) return false;
+  if (t.length <= 3) {
+    // Short labels like "אש" would otherwise match inside ראש / אשקלון.
+    return new RegExp(`(^|[^\\u0590-\\u05FFa-z])${t}([^\\u0590-\\u05FFa-z]|$)`).test(text);
+  }
+  if (text.includes(t)) return true;
+  // Multi-word requirements are rarely written in the same order in her notes
+  // ("בנייה ענפית" vs "ענפית בניה"), so fall back to matching every word.
+  const words = t.split(' ').filter(w => w.length >= 3);
+  return words.length > 1 && words.every(w => text.includes(w));
 }
 
 /** Largest number in a free-text salary field, read as thousands when written "16-18". */

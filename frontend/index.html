@@ -193,15 +193,18 @@
 <div class="stats" id="statsBar"></div>
 
 <div class="tabs">
-  <button class="tab active" data-tab="board" onclick="switchTab('board')">לוח מועמדים</button>
+  <button class="tab active" data-tab="today" onclick="switchTab('today')">🌅 היום שלי</button>
+  <button class="tab" data-tab="board" onclick="switchTab('board')">לוח מועמדים</button>
   <button class="tab" data-tab="dashboard" onclick="switchTab('dashboard')">דשבורד</button>
-  <button class="tab" data-tab="list" onclick="switchTab('list')">רשימה</button>
-  <button class="tab" data-tab="jobs" onclick="switchTab('jobs')">משרות</button>
+  <button class="tab" data-tab="list" onclick="switchTab('list')">מועמדים</button>
+  <button class="tab" data-tab="jobs" onclick="switchTab('jobs')">משרות לגיוס</button>
   <button class="tab" data-tab="clients" onclick="switchTab('clients')">לקוחות</button>
   <button class="tab" data-tab="settings" onclick="switchTab('settings')">הגדרות וקריטריונים</button>
 </div>
 
-<div id="tab-board" class="tabview"><div class="board" id="board"></div></div>
+<div id="tab-today" class="tabview"><div id="todayWrap"></div></div>
+
+<div id="tab-board" class="tabview" style="display:none"><div class="board" id="board"></div></div>
 
 <div id="tab-dashboard" class="tabview" style="display:none">
   <div id="dashWrap"></div>
@@ -212,6 +215,22 @@
 </div>
 
 <div id="tab-jobs" class="tabview" style="display:none">
+  <div class="panel" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center">
+    <button class="btn primary" onclick="toggleJobForm()">➕ בקשת גיוס חדשה</button>
+    <input type="text" id="jobSearch" placeholder="🔍 חיפוש לקוח / תפקיד / מיקום"
+           style="flex:1; min-width:200px; padding:7px" oninput="setJobFilter('q', this.value)">
+    <select style="padding:7px" id="jobStatusFilter" onchange="setJobFilter('status', this.value)">
+      <option value="">כל הסטטוסים</option>
+    </select>
+    <select style="padding:7px" id="jobClientFilter" onchange="setJobFilter('client', this.value)">
+      <option value="">כל הלקוחות</option>
+    </select>
+    <span id="jobCount" style="color:var(--muted); font-size:12px"></span>
+  </div>
+
+  <div id="jobsWrap"></div>
+
+  <div id="jobFormPanel" style="display:none">
   <div class="panel">
     <h3 id="jobFormTitle">הקמת משרה חדשה</h3>
     <div class="hint">מספר המשרה נוצר אוטומטית בעת השמירה.</div>
@@ -281,7 +300,7 @@
       <span id="jobMsg" style="color:var(--green); font-size:12px; margin-inline-start:8px"></span>
     </div>
   </div>
-  <div id="jobsWrap"></div>
+  </div><!-- /#jobFormPanel -->
 </div>
 
 <div id="tab-clients" class="tabview" style="display:none">
@@ -691,6 +710,7 @@ async function loadData() {
     jobs = jbs || [];
     clients = clts || [];
     settings = Object.assign({}, DEFAULT_SETTINGS, sett || {});
+    initLastSeen();
     scoreAll();
     renderAll();
     renderJobs();
@@ -727,7 +747,96 @@ function scoreAll() {
 }
 
 /* ---------- Rendering ---------- */
-function renderAll() { renderStats(); renderBoard(); renderList(); renderDashboard(); }
+function renderAll() { renderStats(); renderToday(); renderBoard(); renderList(); renderDashboard(); }
+
+/* ---------- "היום שלי" — the morning screen ---------- */
+// Answers the question she asked directly in the review: "when I open the
+// system in the morning, what do I see?". Everything here comes from data
+// loadData() already fetched — no extra endpoint.
+const LAST_SEEN_KEY = 'hr_last_seen';
+let sessionSince;   // frozen for the whole session, else the list clears itself
+
+function initLastSeen() {
+  if (sessionSince !== undefined) return;
+  const v = localStorage.getItem(LAST_SEEN_KEY);
+  sessionSince = v ? new Date(v) : null;
+  localStorage.setItem(LAST_SEEN_KEY, new Date().toISOString());
+}
+
+function todaySection(title, items, renderItem, emptyText) {
+  return `<div class="panel">
+    <h3>${title} <span style="color:var(--muted); font-weight:400">(${items.length})</span></h3>
+    ${items.length
+      ? `<div style="display:flex; flex-direction:column; gap:6px">${items.map(renderItem).join('')}</div>`
+      : `<div class="hint">${emptyText}</div>`}
+  </div>`;
+}
+
+function candidateLine(c, extra) {
+  return `<div style="display:flex; align-items:center; gap:8px; font-size:13px; padding:4px 0; border-bottom:1px solid var(--border)">
+    <b style="min-width:140px">${esc(c.name)}</b>
+    <span style="color:var(--muted); flex:1">${esc(c.role || c.jobTitle || '')}${c.city ? ' · ' + esc(c.city) : ''}${extra ? ' · ' + extra : ''}</span>
+    <button class="btn small" onclick="openEditModal('${c.id}')">פתח</button>
+  </div>`;
+}
+
+function renderToday() {
+  const wrap = document.getElementById('todayWrap');
+  if (!wrap) return;
+  const people = collapseDuplicates(candidates);
+  const since = sessionSince || null;
+
+  // New arrivals since the last visit — the counter she explicitly asked for.
+  const isNew = c => {
+    const t = c.addedAt || c.date;
+    return since && t && new Date(t) > since;
+  };
+  const newOnes = people.filter(isNew);
+
+  const waiting = people.filter(c =>
+    !['staffed', 'rejected'].includes(c.stage) &&
+    (!c.outcomeStatus || c.outcomeStatus === 'בברור'));
+
+  const withClient = people.filter(c =>
+    c.sentToClient && !c.clientApproved &&
+    !['staffed', 'rejected'].includes(c.stage));
+
+  const openJobs = jobs.filter(j => j.status === 'awaiting');
+
+  const sinceText = since
+    ? `מאז הכניסה האחרונה (${since.toLocaleDateString('he-IL')} ${since.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })})`
+    : 'ביקור ראשון — מהפעם הבאה יוצג כאן מה נכנס מאז';
+
+  wrap.innerHTML = `
+    <div class="stats" style="margin-bottom:12px">
+      ${kpi(newOnes.length, 'מועמדים חדשים', sinceText)}
+      ${kpi(waiting.length, 'ממתינים לטיפול', 'ללא סטטוס / בבירור')}
+      ${kpi(withClient.length, 'אצל הלקוח', 'הועברו וטרם התקבלה החלטה')}
+      ${kpi(openJobs.length, 'משרות ממתינות לאיוש')}
+    </div>
+
+    ${todaySection('🆕 נכנסו מאז הכניסה האחרונה', newOnes.slice(0, 15),
+      c => candidateLine(c, displayDate(c)),
+      since ? 'לא נכנסו מועמדים חדשים.' : 'ייטען מהפעם הבאה שתיכנס.')}
+
+    ${todaySection('📞 ממתינים לטיפול', waiting.slice(0, 15),
+      c => candidateLine(c, c.salaryExpectation ? 'צ"ש ' + ils(c.salaryExpectation) : ''),
+      'אין מועמדים שממתינים לטיפול.')}
+
+    ${todaySection('👤 אצל הלקוח — ממתין להחלטה', withClient.slice(0, 15),
+      c => candidateLine(c, esc(c.jobTitle || '')),
+      'אין מועמדים שממתינים להחלטת לקוח.')}
+
+    ${todaySection('📋 משרות ממתינות לאיוש', openJobs, j => {
+      const n = candidates.filter(c => c.jobId === j.id).length;
+      return `<div style="display:flex; align-items:center; gap:8px; font-size:13px; padding:4px 0; border-bottom:1px solid var(--border)">
+        <b style="min-width:160px">${esc(j.title)}</b>
+        <span style="color:var(--muted); flex:1">${esc(j.clientName || '')}${j.location ? ' · ' + esc(j.location) : ''} · ${n} מועמדים</span>
+        <button class="btn small" onclick="matchJob('${j.id}')">🎯 התאמות</button>
+      </div>`;
+    }, 'אין משרות פתוחות.')}
+  `;
+}
 
 function renderStats() {
   const el = document.getElementById('statsBar');
@@ -1041,6 +1150,37 @@ function setMergeDuplicates(on) {
   renderAll();
 }
 
+const MILESTONE_LABELS = {
+  interviewedTeams: 'ראיון TEAMS',
+  gotTask: 'קיבל משימה',
+  sentToClient: 'הועבר ללקוח',
+  clientApproved: 'אושר ע"י הלקוח',
+};
+
+// Saved straight from the table. Marking progress is the bulk of her day; making
+// her open a card for each tick would be the main friction in the tool.
+async function patchCandidate(id, patch, revert) {
+  try {
+    const updated = await api('/api/candidates/' + id, {
+      method: 'PATCH', body: JSON.stringify(patch),
+    });
+    const i = candidates.findIndex(x => x.id === id);
+    if (i >= 0) candidates[i] = updated;
+    scoreAll(); renderAll();
+  } catch (err) {
+    setStatus('שגיאה בשמירה: ' + err.message, true);
+    if (revert) revert();
+  }
+}
+
+function setMilestone(id, field, value) {
+  patchCandidate(id, { [field]: value }, () => renderList());
+}
+
+function setOutcome(id, value) {
+  patchCandidate(id, { outcomeStatus: value }, () => renderList());
+}
+
 function matchesListFilters(c) {
   const f = listFilters;
   if (f.source && c.source !== f.source) return false;
@@ -1082,22 +1222,49 @@ function renderList() {
     </label>
     <span style="color:var(--muted); font-size:12px">מוצגים ${shown.length} מתוך ${candidates.length}${hidden ? ` · ${hidden} כפילויות אוחדו` : ''}</span>
   </div>`;
+  // Columns follow her workbook, in her order — this is the sheet she works in
+  // all day, so it should read the same here.
+  const tick = (c, field) =>
+    `<input type="checkbox" ${c[field] ? 'checked' : ''} title="${esc(MILESTONE_LABELS[field])}"
+            onchange="setMilestone('${c.id}', '${field}', this.checked)">`;
+  const statusOpts = cur => ['', ...OUTCOME_STATUSES]
+    .map(s => `<option value="${esc(s)}" ${s === (cur || '') ? 'selected' : ''}>${esc(s || '—')}</option>`).join('');
+
   const rows = shown
     .sort(byRelevance)
     .map(c => `<tr>
-      <td><b>${esc(c.name)}</b> ${dupBadge(c)}<br><span style="color:var(--muted);font-size:11px">${esc(c.email)}</span></td>
-      <td>${esc(c.subject)}</td>
-      <td>${c.source === 'gmail' ? 'Gmail' : c.source === 'outlook' ? 'Outlook' : 'ידני'}</td>
-      <td>${displayDate(c)}</td>
-      <td>${scoreBadge(c)}</td>
-      <td><select class="stage" onchange="setStage('${c.id}', this.value)">${opts(c.stage)}</select></td>
-      <td>${c.link ? `<a href="${esc(c.link)}" target="_blank">📧</a>` : ''}
-          <button class="btn small" onclick="openEditModal('${c.id}')">✏️</button></td>
+      <td style="white-space:nowrap">${displayDate(c)}</td>
+      <td style="min-width:130px"><b>${esc(c.name)}</b> ${dupBadge(c)}
+        ${c.doNotRehire ? '<span class="badge" style="background:var(--red-soft);color:var(--red)">⛔</span>' : ''}
+        ${c.email ? `<br><span style="color:var(--muted);font-size:11px">${esc(c.email)}</span>` : ''}</td>
+      <td style="white-space:nowrap" dir="ltr">${esc(c.phone || '')}</td>
+      <td>${esc(c.region || '')}</td>
+      <td>${esc(c.city || '')}</td>
+      <td>${esc(c.role || '')}</td>
+      <td>${esc(c.jobTitle ? `#${c.jobNumber} ${c.jobTitle}` : '')}</td>
+      <td style="white-space:nowrap">${c.salaryExpectation ? ils(c.salaryExpectation) : ''}</td>
+      <td>${esc(c.jobScope || '')}</td>
+      <td>${esc(c.employmentType || '')}</td>
+      <td style="text-align:center">${tick(c, 'interviewedTeams')}</td>
+      <td style="text-align:center">${tick(c, 'gotTask')}</td>
+      <td style="text-align:center">${tick(c, 'sentToClient')}</td>
+      <td style="text-align:center">${tick(c, 'clientApproved')}</td>
+      <td><select style="padding:4px; font-size:12px" onchange="setOutcome('${c.id}', this.value)">${statusOpts(c.outcomeStatus)}</select></td>
+      <td>${esc(c.sourceChannel || c.referral || '')}</td>
+      <td style="max-width:260px; font-size:11px; color:var(--muted)">${esc((c.summaryText || c.notes || '').slice(0, 160))}</td>
+      <td style="white-space:nowrap">
+        ${c.ai ? `<button class="btn small" onclick="openAnalysisModal('${c.id}')">📄</button>` : ''}
+        <button class="btn small" onclick="openEditModal('${c.id}')">✏️</button></td>
     </tr>`).join('');
+
   const table = shown.length
-    ? `<table><thead><tr>
-        <th>מועמד</th><th>נושא</th><th>מקור</th><th>תאריך</th><th>התאמה</th><th>שלב</th><th></th>
-      </tr></thead><tbody>${rows}</tbody></table>`
+    ? `<div style="overflow-x:auto"><table style="min-width:1400px"><thead><tr>
+        <th>תאריך</th><th>שם מועמד</th><th>טלפון</th><th>מחוז</th><th>מגורים</th><th>תפקיד</th>
+        <th>משרה / לקוח</th><th>צ"ש</th><th>היקף</th><th>העסקה</th>
+        <th title="ראיון TEAMS">TEAMS</th><th title="קיבל משימה">משימה</th>
+        <th title="הועבר ללקוח">ללקוח</th><th title="אושר ע\"י הלקוח">אושר</th>
+        <th>סטטוס</th><th>מקור הגעה</th><th>תיאור / הערות</th><th></th>
+      </tr></thead><tbody>${rows}</tbody></table></div>`
     : '<div class="empty">אין מועמדים התואמים לסינון.</div>';
   wrap.innerHTML = filterBar + table;
   // Typing re-renders the table, so put the caret back where the user left it.
@@ -1680,10 +1847,32 @@ const XL_CERT_COLS = {
   33: 'קרינה בלתי מייננת', 34: 'עזרה ראשונה', 35: 'חשמל',
 };
 
+/**
+ * Find a sheet by name, falling back to its header row.
+ * Sheet names are whatever the recruiter last called a tab, so matching on the
+ * headers she actually types is the more durable signal.
+ */
+function findSheet(sheets, nameRe, headerTerms) {
+  for (const [name, rows] of sheets) if (nameRe.test(name)) return rows;
+  for (const [, rows] of sheets) {
+    for (const row of rows.slice(0, 5)) {
+      const text = Object.values(row).join(' ');
+      if (headerTerms.every(t => text.includes(t))) return rows;
+    }
+  }
+  return [];
+}
+
+// Candidates come out of the workbook with no CV attached — her sheet is the
+// record of the intro call, not a CV library. Everything downstream (board,
+// list, dashboard, matching) has to work from these fields alone.
 function workbookToImport(sheets) {
-  const findSheet = re => [...sheets.entries()].find(([n]) => re.test(n))?.[1] || [];
+  const candidateRows = findSheet(sheets, /מועמדים/, ['שם מועמד']);
+  const jobRows = findSheet(sheets, /משרות/, ['שם תפקיד', 'תאריך בקשה']);
+  const frozenRows = findSheet(sheets, /בהקפאה/, ['שם תפקיד', 'רייט']);
+
   const candidates = [];
-  for (const r of findSheet(/מועמדים/).slice(1)) {
+  for (const r of candidateRows.slice(1)) {
     const name = (r[3] || '').trim();
     if (!name || name === '0') continue;
     const noAnswer = ['א"מ', 'אמ'].includes(r[4] || '');
@@ -1706,7 +1895,7 @@ function workbookToImport(sheets) {
   }
 
   const jobs = [];
-  for (const r of findSheet(/משרות/)) {
+  for (const r of jobRows) {
     const status = JOB_STATUS_FROM_XL[(r[1] || '').trim()];
     if (!status) continue;   // rows carrying a recruiter name aren't requests
     const requirements = {};
@@ -1726,7 +1915,7 @@ function workbookToImport(sheets) {
       securityClearance: r[39] || '', extraNotes: r[40] || '',
     });
   }
-  for (const r of findSheet(/בהקפאה/).slice(1)) {
+  for (const r of frozenRows.slice(1)) {
     if (!r[7] && !r[4]) continue;
     jobs.push({
       status: 'frozen', statusReason: r[1] || 'בהקפאה / לא אושר',
@@ -1736,7 +1925,17 @@ function workbookToImport(sheets) {
       workHours: r[12] || '', jobScope: r[13] || '', requirements: {},
     });
   }
-  return { candidates, jobs };
+  return {
+    candidates, jobs,
+    // What the reader actually saw, so a failed import can explain itself
+    // instead of just reporting "nothing found".
+    diagnostics: {
+      sheets: [...sheets.entries()].map(([name, rows]) => ({ name, rows: rows.length })),
+      candidateRows: candidateRows.length,
+      jobRows: jobRows.length,
+      frozenRows: frozenRows.length,
+    },
+  };
 }
 
 /* ---------- One-time import of the recruiter's workbook ---------- */
@@ -1762,11 +1961,27 @@ async function importWorkbook(input) {
   }
 
   const nc = (payload.candidates || []).length, nj = (payload.jobs || []).length;
+  const d = payload.diagnostics;
+
   if (!nc && !nj) {
-    setStatus('לא נמצאו מועמדים או משרות בקובץ. ודא שזה קובץ צ\'קליסט הגיוסים.', true);
+    // Say what was read, so the failure points at its own cause.
+    const seen = d
+      ? '\n\nגיליונות שנמצאו בקובץ:\n' + d.sheets.map(s => `  • ${s.name} — ${s.rows} שורות`).join('\n') +
+        `\n\nשורות מועמדים שזוהו: ${d.candidateRows}\nשורות משרות שזוהו: ${d.jobRows}`
+      : '';
+    alert('לא זוהו מועמדים או משרות בקובץ.' + seen +
+      '\n\nצפוי גיליון מועמדים עם עמודת "שם מועמד", וגיליון משרות עם "שם תפקיד" ו-"תאריך בקשה".');
+    setStatus('הייבוא לא מצא נתונים — ראה את פירוט הגיליונות.', true);
     return;
   }
-  if (!confirm(`לייבא ${nc} מועמדים ו-${nj} בקשות גיוס? רשומות שכבר קיימות ידולגו.`)) return;
+
+  const detail = d ? `\n\nנקרא מתוך:\n` + d.sheets
+    .filter(s => s.rows > 1).map(s => `  • ${s.name} — ${s.rows} שורות`).join('\n') : '';
+  if (!confirm(
+    `לייבא ${nc} מועמדים ו-${nj} בקשות גיוס?` + detail +
+    `\n\nהמועמדים מיובאים ללא קורות חיים — לפי הפילוח שבאקסל.` +
+    `\nרשומות שכבר קיימות ידולגו, שום דבר לא נמחק.`
+  )) return;
 
   showBusy('📊 מייבא נתונים מהאקסל…');
   try {
@@ -2125,27 +2340,95 @@ function fillJobClientSelect(selectedId) {
     clients.map(c => `<option value="${c.id}" ${c.id === selectedId ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
 }
 
+let jobFilters = { q: '', status: '', client: '' };
+
+function setJobFilter(key, value) { jobFilters[key] = value; renderJobs(); }
+
+function toggleJobForm(show) {
+  const panel = document.getElementById('jobFormPanel');
+  if (!panel) return;
+  const open = show === undefined ? panel.style.display === 'none' : show;
+  panel.style.display = open ? '' : 'none';
+  if (open) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+const JOB_STATUS_COLORS = {
+  awaiting: 'var(--amber)', filled: 'var(--green)',
+  not_filled: 'var(--red)', frozen: 'var(--muted)',
+};
+
+function matchesJobFilters(j) {
+  if (jobFilters.status && j.status !== jobFilters.status) return false;
+  if (jobFilters.client && (j.clientName || '') !== jobFilters.client) return false;
+  if (jobFilters.q) {
+    const hay = [j.title, j.clientName, j.location, j.contact, j.candidateInProcess,
+                 j.jobNumber, j.keywords].join(' ').toLowerCase();
+    if (!hay.includes(jobFilters.q.toLowerCase())) return false;
+  }
+  return true;
+}
+
+// "משרות לגיוס" as a work surface: the requests table is what she opens the tab
+// for, so it leads and the (long) request form stays folded away.
 function renderJobs() {
   fillJobClientSelect(document.getElementById('jClient').value || '');
+
+  // Keep the filter selects in sync with the data.
+  const statusSel = document.getElementById('jobStatusFilter');
+  if (statusSel) {
+    statusSel.innerHTML = '<option value="">כל הסטטוסים</option>' +
+      JOB_STATUSES.map(s => `<option value="${s.id}" ${jobFilters.status === s.id ? 'selected' : ''}>${s.label} (${jobs.filter(j => j.status === s.id).length})</option>`).join('');
+  }
+  const clientSel = document.getElementById('jobClientFilter');
+  if (clientSel) {
+    const names = [...new Set(jobs.map(j => j.clientName).filter(Boolean))].sort();
+    clientSel.innerHTML = '<option value="">כל הלקוחות</option>' +
+      names.map(n => `<option value="${esc(n)}" ${jobFilters.client === n ? 'selected' : ''}>${esc(n)}</option>`).join('');
+  }
+
   const wrap = document.getElementById('jobsWrap');
-  if (!jobs.length) { wrap.innerHTML = '<div class="empty">אין משרות עדיין. הקם משרה חדשה למעלה.</div>'; return; }
-  const rows = jobs.map(j => {
+  const countEl = document.getElementById('jobCount');
+  if (!jobs.length) {
+    if (countEl) countEl.textContent = '';
+    wrap.innerHTML = '<div class="empty">אין בקשות גיוס עדיין. לחץ "בקשת גיוס חדשה", או ייבא את האקסל דרך ההגדרות.</div>';
+    return;
+  }
+
+  const shown = jobs.filter(matchesJobFilters);
+  if (countEl) countEl.textContent = `מוצגות ${shown.length} מתוך ${jobs.length}`;
+  if (!shown.length) { wrap.innerHTML = '<div class="empty">אין בקשות התואמות לסינון.</div>'; return; }
+
+  const rows = shown.map(j => {
     const count = candidates.filter(c => c.jobId === j.id).length;
+    const reqs = Object.entries(j.requirements || {})
+      .map(([k, v]) => `<span class="badge crit" title="${esc(v)}">${esc(k)}${v === 'חובה' ? '*' : ''}</span>`)
+      .join(' ');
     return `<tr>
-      <td><b>#${esc(j.jobNumber)}</b></td>
-      <td>${esc(j.title)}</td>
-      <td>${esc(j.clientName || '')}</td>
-      <td>${j.track ? esc(TRACK_LABELS[j.track] || j.track) : ''}</td>
-      <td>${jobStatusLabel(j.status)}${j.fillMonths != null ? ` <span style="color:var(--muted);font-size:11px">(${j.fillMonths} ח')</span>` : ''}</td>
+      <td style="white-space:nowrap">
+        <span style="color:${JOB_STATUS_COLORS[j.status] || 'inherit'}; font-weight:600">${jobStatusLabel(j.status)}</span>
+        ${j.fillMonths != null ? `<br><span style="color:var(--muted);font-size:11px">${j.fillMonths} ח'</span>` : ''}
+        ${j.statusReason ? `<br><span style="color:var(--muted);font-size:11px">${esc(j.statusReason)}</span>` : ''}
+      </td>
+      <td style="white-space:nowrap">${esc(j.requestDate || '')}</td>
+      <td>${esc(j.clientName || '')}${j.contact ? `<br><span style="color:var(--muted);font-size:11px">${esc(j.contact)}</span>` : ''}</td>
+      <td><b>${esc(j.title)}</b><br><span style="color:var(--muted);font-size:11px">#${esc(j.jobNumber)}</span></td>
+      <td>${esc(j.location || '')}</td>
+      <td>${esc(j.candidateInProcess || '')}</td>
+      <td>${esc(j.salaryRange || j.rate || '')}</td>
+      <td style="max-width:220px">${reqs || '<span style="color:var(--muted)">—</span>'}</td>
       <td>${count}</td>
-      <td><button class="btn small" onclick="matchJob('${j.id}')" title="מי מהמאגר מתאים למשרה הזו">🎯 התאמות</button>
-          <button class="btn small" onclick="editJob('${j.id}')">✏️</button>
-          <button class="btn small" style="color:var(--red)" onclick="delJob('${j.id}')">🗑</button></td>
+      <td style="white-space:nowrap">
+        <button class="btn small" onclick="matchJob('${j.id}')" title="מי מהמאגר מתאים למשרה הזו">🎯</button>
+        <button class="btn small" onclick="editJob('${j.id}')">✏️</button>
+        <button class="btn small" style="color:var(--red)" onclick="delJob('${j.id}')">🗑</button>
+      </td>
     </tr>`;
   }).join('');
-  wrap.innerHTML = `<table><thead><tr>
-    <th>מס׳</th><th>כותרת</th><th>לקוח</th><th>מסלול</th><th>סטטוס</th><th>מועמדים</th><th></th>
-  </tr></thead><tbody>${rows}</tbody></table>`;
+
+  wrap.innerHTML = `<div style="overflow-x:auto"><table><thead><tr>
+    <th>סטטוס</th><th>תאריך בקשה</th><th>לקוח</th><th>תפקיד</th><th>מיקום</th>
+    <th>מועמד בתהליך</th><th>שכר</th><th>דרישות</th><th>מועמדים</th><th></th>
+  </tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 function jobStatusLabel(id) {
@@ -2196,6 +2479,7 @@ function resetJobForm() {
   document.getElementById('jTravel').checked = false;
   renderRequirementInputs({});
   document.getElementById('jCancelBtn').style.display = 'none';
+  toggleJobForm(false);
 }
 
 function editJob(id) {
@@ -2219,7 +2503,7 @@ function editJob(id) {
   document.getElementById('jTravel').checked = !!j.travelBetweenSites;
   renderRequirementInputs(j.requirements || {});
   document.getElementById('jCancelBtn').style.display = '';
-  window.scrollTo(0, 0);
+  toggleJobForm(true);
 }
 
 async function saveJob() {
@@ -2353,6 +2637,7 @@ function switchTab(t) {
   if (t === 'jobs') renderJobs();
   if (t === 'clients') renderClients();
   if (t === 'dashboard') renderDashboard();
+  if (t === 'today') renderToday();
 }
 
 /* ---------- Init ---------- */
