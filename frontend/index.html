@@ -1958,9 +1958,10 @@ function workbookToImport(sheets) {
   const frozenRows = findSheet(sheets, /בהקפאה/, ['שם תפקיד', 'רייט']);
 
   const candidates = [];
-  for (const r of candidateRows.slice(1)) {
+  candidateRows.forEach((r, idx) => {
+    if (idx === 0) return;                       // header
     const name = (r[3] || '').trim();
-    if (!name || name === '0') continue;
+    if (!name || name === '0') return;
     const noAnswer = ['א"מ', 'אמ'].includes(r[4] || '');
     const desc = r[17] || '', status = r[18] || '';
     candidates.push({
@@ -1977,13 +1978,15 @@ function workbookToImport(sheets) {
       rejectionReason: desc && desc !== status ? desc : '',
       sourceChannel: r[19] || '', summaryText: r[20] || '',
       contactedAt: xlDate(r[2]), noAnswer,
+      // Position is the only stable identity the workbook offers.
+      importKey: 'cand#' + idx,
     });
-  }
+  });
 
   const jobs = [];
-  for (const r of jobRows) {
+  jobRows.forEach((r, idx) => {
     const status = JOB_STATUS_FROM_XL[(r[1] || '').trim()];
-    if (!status) continue;   // rows carrying a recruiter name aren't requests
+    if (!status) return;   // rows carrying a recruiter name aren't requests
     const requirements = {};
     for (const [col, label] of Object.entries(XL_CERT_COLS)) if (r[col]) requirements[label] = r[col];
     jobs.push({
@@ -1999,18 +2002,21 @@ function workbookToImport(sheets) {
       equipment: r[23] || '', yearsExperience: r[24] || '', requirements,
       language: r[37] || '', reportsTo: r[38] || '',
       securityClearance: r[39] || '', extraNotes: r[40] || '',
+      importKey: 'job#' + idx,
     });
-  }
-  for (const r of frozenRows.slice(1)) {
-    if (!r[7] && !r[4]) continue;
+  });
+  frozenRows.forEach((r, idx) => {
+    if (idx === 0) return;
+    if (!r[7] && !r[4]) return;
     jobs.push({
       status: 'frozen', statusReason: r[1] || 'בהקפאה / לא אושר',
       requestDate: xlDate(r[3]), clientName: r[4] || '', description: r[5] || '',
       contact: r[6] || '', title: r[7] || 'משרה ללא כותרת', rate: r[8] || '',
       salaryRange: r[9] || '', keywords: r[10] || '', location: r[11] || '',
       workHours: r[12] || '', jobScope: r[13] || '', requirements: {},
+      importKey: 'frozen#' + idx,
     });
-  }
+  });
   return {
     candidates, jobs,
     // What the reader actually saw, so a failed import can explain itself

@@ -48,14 +48,34 @@ router.post('/', asyncHandler(async (req, res) => {
     // ---------- client requests ----------
     for (const j of jobs) {
       const cid = await clientId(j.clientName);
-      const dup = await client.query(
-        `SELECT id FROM jobs
-         WHERE title = $1 AND client_id IS NOT DISTINCT FROM $2
-           AND request_date IS NOT DISTINCT FROM $3
-         LIMIT 1`,
-        [j.title, cid, j.requestDate || null]
-      );
-      if (dup.rows[0]) { summary.jobsSkipped++; continue; }
+
+      // Identity is the row's position in the workbook. Matching on
+      // title + client + date instead would merge two headcounts for the same
+      // role on the same day — which previously lost an open request.
+      let existing = null;
+      if (j.importKey) {
+        const r = await client.query('SELECT id FROM jobs WHERE import_key = $1 LIMIT 1', [j.importKey]);
+        existing = r.rows[0] ?? null;
+      }
+      if (!existing) {
+        // Rows created by the earlier, keyless import: adopt one rather than
+        // insert a duplicate alongside it. Only rows not yet claimed qualify.
+        const r = await client.query(
+          `SELECT id FROM jobs
+           WHERE title = $1 AND client_id IS NOT DISTINCT FROM $2
+             AND request_date IS NOT DISTINCT FROM $3
+             AND import_key IS NULL
+           LIMIT 1`,
+          [j.title, cid, j.requestDate || null]
+        );
+        if (r.rows[0]) {
+          if (j.importKey) {
+            await client.query('UPDATE jobs SET import_key = $1 WHERE id = $2', [j.importKey, r.rows[0].id]);
+          }
+          existing = r.rows[0];
+        }
+      }
+      if (existing) { summary.jobsSkipped++; continue; }
 
       const seq = await client.query("SELECT nextval('jobs_number_seq') AS n");
       await client.query(
@@ -64,9 +84,9 @@ router.post('/', asyncHandler(async (req, res) => {
             request_date, filled_date, status_reason, candidate_in_process, contact,
             start_date, period, rate, salary_range, includes_car, travel_between_sites,
             location, work_hours, job_scope, shifts, equipment, years_experience,
-            language, reports_to, security_clearance, extra_notes)
+            language, reports_to, security_clearance, extra_notes, import_key)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
-                 $19,$20,$21,$22,$23,$24,$25,$26,$27,$28)`,
+                 $19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)`,
         [
           String(seq.rows[0].n), j.title, cid, j.status || 'awaiting',
           j.keywords || null, j.description || null, j.requirements || {},
@@ -76,7 +96,7 @@ router.post('/', asyncHandler(async (req, res) => {
           j.includesCar ?? null, j.travelBetweenSites ?? null, j.location || null,
           j.workHours || null, j.jobScope || null, j.shifts || null, j.equipment || null,
           j.yearsExperience || null, j.language || null, j.reportsTo || null,
-          j.securityClearance || null, j.extraNotes || null
+          j.securityClearance || null, j.extraNotes || null, j.importKey || null
         ]
       );
       summary.jobsCreated++;
@@ -88,6 +108,14 @@ router.post('/', asyncHandler(async (req, res) => {
       if (!name) { summary.candidatesSkipped++; continue; }
       const phone = normalizePhone(c.phone);
       const email = normalizeEmail(c.email);
+
+      // Already imported from this row?
+      if (c.importKey) {
+        const r = await client.query(
+          'SELECT id FROM applications WHERE import_key = $1 LIMIT 1', [c.importKey]
+        );
+        if (r.rows[0]) { summary.candidatesSkipped++; continue; }
+      }
 
       // Already here? Match on phone first (the workbook has no emails), then
       // on an exact name that came from this same import.
@@ -112,11 +140,21 @@ router.post('/', asyncHandler(async (req, res) => {
            WHERE id = $1`,
           [personId, c.region || null, c.city || null, phone]
         );
+        // Claim the row the earlier keyless import created for this person, so
+        // the next run recognises it by key instead of re-matching on name.
         const hasApp = await client.query(
-          `SELECT id FROM applications WHERE person_id = $1 AND source = 'excel' LIMIT 1`,
+          `SELECT id, import_key FROM applications
+           WHERE person_id = $1 AND source = 'excel' LIMIT 1`,
           [personId]
         );
-        if (hasApp.rows[0]) { summary.candidatesSkipped++; continue; }
+        if (hasApp.rows[0]) {
+          if (c.importKey && !hasApp.rows[0].import_key) {
+            await client.query('UPDATE applications SET import_key = $1 WHERE id = $2',
+              [c.importKey, hasApp.rows[0].id]);
+          }
+          summary.candidatesSkipped++;
+          continue;
+        }
       } else {
         const ins = await client.query(
           `INSERT INTO people (name, email, phone, region, city) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
@@ -138,14 +176,15 @@ router.post('/', asyncHandler(async (req, res) => {
            (person_id, job_id, source, role, stage, notes, summary_text,
             interviewed_teams, got_task, sent_to_client, client_approved,
             outcome_status, salary_expectation, job_scope, employment_type,
-            source_channel, contacted_at, rejection_reason)
-         VALUES ($1,$2,'excel',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+            source_channel, contacted_at, rejection_reason, import_key)
+         VALUES ($1,$2,'excel',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
         [
           personId, jobId, c.role || '', stageFor(c), '', c.summaryText || null,
           !!c.interviewedTeams, !!c.gotTask, !!c.sentToClient, !!c.clientApproved,
           c.noAnswer ? 'אין מענה' : (c.outcomeStatus || null),
           c.salaryExpectation ?? null, c.jobScope || null, c.employmentType || null,
-          c.sourceChannel || null, c.contactedAt || null, c.rejectionReason || null
+          c.sourceChannel || null, c.contactedAt || null, c.rejectionReason || null,
+          c.importKey || null
         ]
       );
       summary.candidatesCreated++;
