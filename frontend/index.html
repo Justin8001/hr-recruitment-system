@@ -340,9 +340,14 @@
     <span id="saveMsg" style="color:var(--green); font-size:12px; margin-inline-start:8px"></span>
   </div>
   <div class="panel">
-    <h3>ייבוא מהאקסל</h3>
-    <div class="hint">ייבוא חד-פעמי של קובץ ה-JSON שהומר מצ'קליסט הגיוסים (מועמדים + בקשות גיוס). רשומות שכבר קיימות ידולגו, שום דבר לא נמחק.</div>
-    <input type="file" id="workbookFile" accept=".json" onchange="importWorkbook(this)">
+    <h3>📊 ייבוא מצ'קליסט הגיוסים (אקסל)</h3>
+    <div class="hint">
+      בחר את קובץ האקסל <b>"צ'קליסט גיוסים HBC.xlsx"</b> כמו שהוא — המערכת קוראת אותו בדפדפן
+      ומייבאת את המועמדים ובקשות הגיוס. אפשר להריץ שוב אחרי שהאקסל מתעדכן: רשומות קיימות ידולגו,
+      שום דבר לא נמחק.
+    </div>
+    <input type="file" id="workbookFile" accept=".xlsx,.json" onchange="importWorkbook(this)"
+           style="margin-top:6px">
   </div>
   <div class="panel">
     <h3>ניקוי נתונים</h3>
@@ -1477,19 +1482,290 @@ async function matchJob(jobId) {
 }
 function closeMatchModal() { document.getElementById('matchModal').classList.remove('show'); }
 
+/* ---------- Reading the recruiter's .xlsx in the browser ---------- */
+// An .xlsx is a ZIP of XML files. The browser can inflate on its own via
+// DecompressionStream, so the workbook is parsed here with no library and no
+// 20MB upload — only the extracted rows are sent to the server.
+
+/** Index the ZIP central directory: entry name -> compressed bytes + method. */
+function zipIndex(buffer) {
+  const dv = new DataView(buffer);
+  const bytes = new Uint8Array(buffer);
+
+  // End of central directory: scan back from the end (comment is usually empty).
+  let eocd = -1;
+  for (let i = buffer.byteLength - 22; i >= 0 && i > buffer.byteLength - 66000; i--) {
+    if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) throw new Error('הקובץ אינו קובץ אקסל תקין');
+
+  const count = dv.getUint16(eocd + 10, true);
+  let p = dv.getUint32(eocd + 16, true);
+  const out = new Map();
+
+  for (let i = 0; i < count; i++) {
+    if (dv.getUint32(p, true) !== 0x02014b50) break;
+    const method = dv.getUint16(p + 10, true);
+    const compSize = dv.getUint32(p + 20, true);
+    const fnLen = dv.getUint16(p + 28, true);
+    const exLen = dv.getUint16(p + 30, true);
+    const cmLen = dv.getUint16(p + 32, true);
+    const localOff = dv.getUint32(p + 42, true);
+    const name = new TextDecoder().decode(bytes.subarray(p + 46, p + 46 + fnLen));
+    p += 46 + fnLen + exLen + cmLen;
+
+    // The local header repeats the name/extra lengths; the data follows it.
+    const lfnLen = dv.getUint16(localOff + 26, true);
+    const lexLen = dv.getUint16(localOff + 28, true);
+    const start = localOff + 30 + lfnLen + lexLen;
+    out.set(name, { method, bytes: bytes.subarray(start, start + compSize) });
+  }
+  return out;
+}
+
+function entryStream(entry) {
+  const blob = new Blob([entry.bytes]).stream();
+  return entry.method === 0 ? blob : blob.pipeThrough(new DecompressionStream('deflate-raw'));
+}
+
+async function entryText(entry) {
+  return entry ? await new Response(entryStream(entry)).text() : '';
+}
+
+function colNum(ref) {
+  let n = 0;
+  for (const ch of (ref.match(/^[A-Z]+/) || [''])[0]) n = n * 26 + (ch.charCodeAt(0) - 64);
+  return n;
+}
+
+function decodeXmlText(s) {
+  return s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+          .replace(/&apos;/g, "'").replace(/&#(\d+);/g, (_, d) => String.fromCharCode(+d))
+          .replace(/&amp;/g, '&');
+}
+
+const CELL_RE = /<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g;
+const ROW_RE = /<row\b[^>]*?(?:\/>|>[\s\S]*?<\/row>)/g;
+
+function parseRowCells(rowXml, shared) {
+  const cells = {};
+  CELL_RE.lastIndex = 0;
+  let m;
+  while ((m = CELL_RE.exec(rowXml))) {
+    const attrs = m[1] || '', inner = m[2] || '';
+    if (!inner) continue;
+    const type = (attrs.match(/\bt="([^"]+)"/) || [])[1];
+    let val = '';
+    if (type === 'inlineStr') {
+      val = [...inner.matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map(x => x[1]).join('');
+    } else {
+      const v = (inner.match(/<v[^>]*>([\s\S]*?)<\/v>/) || [])[1];
+      if (v == null) continue;
+      val = type === 's' ? (shared[Number(v)] ?? '') : v;
+    }
+    val = decodeXmlText(String(val)).trim();
+    if (val) {
+      const ref = (attrs.match(/\br="([A-Z]+)\d+"/) || [])[1];
+      if (ref) cells[colNum(ref)] = val;
+    }
+  }
+  return cells;
+}
+
+/**
+ * Reads a worksheet by streaming it.
+ *
+ * This workbook's sheets are padded out to Excel's million-row limit — one is
+ * 255MB of XML uncompressed — so it is never held in memory or handed to a DOM
+ * parser. Rows are matched off a small rolling buffer and the stream is
+ * cancelled once the data clearly ran out.
+ */
+async function streamSheetRows(entry, shared) {
+  const reader = entryStream(entry).pipeThrough(new TextDecoderStream()).getReader();
+  const rows = [];
+  let buf = '', emptyRun = 0, stop = false;
+
+  while (!stop) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += value;
+
+    let lastEnd = 0;
+    ROW_RE.lastIndex = 0;
+    let m;
+    while ((m = ROW_RE.exec(buf))) {
+      lastEnd = m.index + m[0].length;
+      const cells = parseRowCells(m[0], shared);
+      rows.push(cells);
+      emptyRun = Object.keys(cells).length ? 0 : emptyRun + 1;
+      // A long run of blank rows means the real data ended; the rest is padding.
+      if (emptyRun > 1000 || rows.length > 50000) { stop = true; break; }
+    }
+    buf = buf.slice(lastEnd);
+    if (buf.length > 4e6) buf = buf.slice(-2e6);   // never let the buffer grow
+  }
+  try { await reader.cancel(); } catch { /* already closed */ }
+  return rows;
+}
+
+/** Sheet name -> array of rows, each row a {columnNumber: text} object. */
+async function readWorkbook(file) {
+  if (typeof DecompressionStream === 'undefined') {
+    throw new Error('הדפדפן הזה לא תומך בקריאת אקסל. השתמש ב-Chrome מעודכן.');
+  }
+  const zip = zipIndex(await file.arrayBuffer());
+
+  const shared = [];
+  const ssText = await entryText(zip.get('xl/sharedStrings.xml'));
+  for (const si of ssText.matchAll(/<si>([\s\S]*?)<\/si>/g)) {
+    shared.push(decodeXmlText([...si[1].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map(x => x[1]).join('')));
+  }
+
+  const relText = await entryText(zip.get('xl/_rels/workbook.xml.rels'));
+  const relTarget = new Map();
+  for (const r of relText.matchAll(/<Relationship\b[^>]*>/g)) {
+    const id = (r[0].match(/Id="([^"]+)"/) || [])[1];
+    const target = (r[0].match(/Target="([^"]+)"/) || [])[1];
+    if (id && target) relTarget.set(id, target);
+  }
+
+  const wbText = await entryText(zip.get('xl/workbook.xml'));
+  const sheets = new Map();
+  for (const sh of wbText.matchAll(/<sheet\b[^>]*>/g)) {
+    const name = decodeXmlText((sh[0].match(/name="([^"]+)"/) || [])[1] || '');
+    const rid = (sh[0].match(/r:id="([^"]+)"/) || [])[1];
+    let target = relTarget.get(rid) || '';
+    target = target.startsWith('/xl/') ? target.slice(1)
+           : target.startsWith('xl/') ? target : 'xl/' + target;
+    const entry = zip.get(target);
+    if (!name || !entry) continue;
+    sheets.set(name, await streamSheetRows(entry, shared));
+  }
+  return sheets;
+}
+
+/* ---------- Mapping the workbook onto the import payload ---------- */
+const XL_EPOCH = Date.UTC(1899, 11, 30);
+
+function xlDate(v) {
+  if (!v) return '';
+  const s = String(v).trim();
+  if (/^\d{4,5}(\.\d+)?$/.test(s)) {
+    return new Date(XL_EPOCH + Number(s) * 864e5).toISOString().slice(0, 10);
+  }
+  let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (m) {
+    const y = Number(m[3]) < 100 ? 2000 + Number(m[3]) : Number(m[3]);
+    const d = new Date(Date.UTC(y, Number(m[2]) - 1, Number(m[1])));
+    return isNaN(d) ? '' : d.toISOString().slice(0, 10);
+  }
+  m = s.match(/^(\d{1,2})\/(\d{4})$/);   // "03/2026" — month only
+  if (m) return `${m[2]}-${String(m[1]).padStart(2, '0')}-01`;
+  return '';
+}
+
+function xlNum(v) {
+  if (!v) return null;
+  const s = String(v).replace(/[^\d.]/g, '');
+  if (!s) return null;
+  const n = Number(s);
+  if (!isFinite(n) || n <= 0) return null;
+  return n < 100 ? n * 1000 : n;   // "18" means 18K
+}
+
+const JOB_STATUS_FROM_XL = { 'אויש': 'filled', 'לא אויש': 'not_filled', 'ממתין לאיוש': 'awaiting' };
+const XL_CERT_COLS = {
+  25: 'בנייה ענפית', 26: 'מדריך גובה', 27: 'הכנת תוכנית בטיחות', 28: 'הדרכה טובה',
+  29: 'אש', 30: 'איכות הסביבה', 31: 'כימיה', 32: 'ארגונומיה',
+  33: 'קרינה בלתי מייננת', 34: 'עזרה ראשונה', 35: 'חשמל',
+};
+
+function workbookToImport(sheets) {
+  const findSheet = re => [...sheets.entries()].find(([n]) => re.test(n))?.[1] || [];
+  const candidates = [];
+  for (const r of findSheet(/מועמדים/).slice(1)) {
+    const name = (r[3] || '').trim();
+    if (!name || name === '0') continue;
+    const noAnswer = ['א"מ', 'אמ'].includes(r[4] || '');
+    const desc = r[17] || '', status = r[18] || '';
+    candidates.push({
+      name,
+      phone: noAnswer ? '' : (r[4] || ''),
+      region: r[5] || '', city: r[6] || '', role: r[7] || '', clientName: r[8] || '',
+      jobScope: r[10] || '', salaryExpectation: xlNum(r[11]),
+      employmentType: r[12] ? 'חשבונית' : '',
+      interviewedTeams: !!r[13] && r[13] !== '0',
+      gotTask: !!r[14] && r[14] !== '0',
+      sentToClient: !!r[15] && r[15] !== '0',
+      clientApproved: !!r[16] && r[16] !== '0',
+      outcomeStatus: status || desc,
+      rejectionReason: desc && desc !== status ? desc : '',
+      sourceChannel: r[19] || '', summaryText: r[20] || '',
+      contactedAt: xlDate(r[2]), noAnswer,
+    });
+  }
+
+  const jobs = [];
+  for (const r of findSheet(/משרות/)) {
+    const status = JOB_STATUS_FROM_XL[(r[1] || '').trim()];
+    if (!status) continue;   // rows carrying a recruiter name aren't requests
+    const requirements = {};
+    for (const [col, label] of Object.entries(XL_CERT_COLS)) if (r[col]) requirements[label] = r[col];
+    jobs.push({
+      status, statusReason: r[2] || '', candidateInProcess: r[3] || '',
+      filledDate: xlDate(r[5]), requestDate: xlDate(r[6]),
+      clientName: r[7] || '', contact: r[8] || '', startDate: r[9] || '',
+      period: r[10] || '', rate: r[11] || '', title: r[12] || 'משרה ללא כותרת',
+      description: r[13] || '', salaryRange: r[14] || '',
+      includesCar: { 'כן': true, 'לא': false }[r[15]],
+      travelBetweenSites: { 'כן': true, 'לא': false }[r[16]],
+      keywords: r[17] || '', location: r[18] || '', workHours: r[19] || '',
+      jobScope: r[20] || '', shifts: r[21] || '', employmentPeriod: r[22] || '',
+      equipment: r[23] || '', yearsExperience: r[24] || '', requirements,
+      language: r[37] || '', reportsTo: r[38] || '',
+      securityClearance: r[39] || '', extraNotes: r[40] || '',
+    });
+  }
+  for (const r of findSheet(/בהקפאה/).slice(1)) {
+    if (!r[7] && !r[4]) continue;
+    jobs.push({
+      status: 'frozen', statusReason: r[1] || 'בהקפאה / לא אושר',
+      requestDate: xlDate(r[3]), clientName: r[4] || '', description: r[5] || '',
+      contact: r[6] || '', title: r[7] || 'משרה ללא כותרת', rate: r[8] || '',
+      salaryRange: r[9] || '', keywords: r[10] || '', location: r[11] || '',
+      workHours: r[12] || '', jobScope: r[13] || '', requirements: {},
+    });
+  }
+  return { candidates, jobs };
+}
+
 /* ---------- One-time import of the recruiter's workbook ---------- */
 async function importWorkbook(input) {
   const file = input.files && input.files[0];
   if (!file) return;
   input.value = '';
+
   let payload;
+  const isExcel = /\.xlsx$/i.test(file.name);
   try {
-    payload = JSON.parse(await file.text());
-  } catch {
-    setStatus('הקובץ אינו JSON תקין.', true);
+    if (isExcel) {
+      showBusy('📖 קורא את קובץ האקסל…');
+      payload = workbookToImport(await readWorkbook(file));
+      hideBusy();
+    } else {
+      payload = JSON.parse(await file.text());
+    }
+  } catch (err) {
+    hideBusy();
+    setStatus(`שגיאה בקריאת הקובץ: ${err.message}`, true);
     return;
   }
+
   const nc = (payload.candidates || []).length, nj = (payload.jobs || []).length;
+  if (!nc && !nj) {
+    setStatus('לא נמצאו מועמדים או משרות בקובץ. ודא שזה קובץ צ\'קליסט הגיוסים.', true);
+    return;
+  }
   if (!confirm(`לייבא ${nc} מועמדים ו-${nj} בקשות גיוס? רשומות שכבר קיימות ידולגו.`)) return;
 
   showBusy('📊 מייבא נתונים מהאקסל…');
