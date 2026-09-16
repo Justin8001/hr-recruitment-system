@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>מערכת גיוס מועמדים | HB Consulting</title>
+<link rel="icon" href="logo.png" type="image/png">
 <script src="config.js"></script>
 <style>
   /* HB Consulting brand palette (Brand Identity Guidelines Sheet, v1.0).
@@ -16,7 +17,7 @@
     --brand-purple: #75318D;    /* Vibrant Purple — accent / hover */
     --brand-slate: #414042;     /* Slate Grey   — body text */
     --brand-black: #1A1A1B;     /* Rich Black   — headings */
-    --brand-gradient: linear-gradient(90deg, #75318D 0%, #2E4B94 100%);
+    --brand-gradient: linear-gradient(90deg, var(--brand-purple) 0%, var(--brand-blue) 100%);
 
     --bg: #f8f9fa;
     --card: #ffffff;
@@ -24,6 +25,12 @@
     --text: var(--brand-black);
     /* Lightened from Slate Grey so hints still sit below body text. */
     --muted: #71717a;
+    --text-secondary: #4a5462;
+    --surface-subtle: #eef0f4;
+    --surface-hover: #fafbfc;
+    --on-accent: #ffffff;
+    --overlay: rgba(20, 28, 40, .45);
+    --shadow-overlay: 0 6px 24px rgba(0, 0, 0, .28);
     --accent: var(--brand-blue);
     --accent-soft: #eaeef7;
     --green: #16a34a;
@@ -34,16 +41,19 @@
     --amber-soft: #fdf3e3;
     --purple: var(--brand-purple);
     --purple-soft: #f3eaf7;
+    --focus-ring: rgba(46, 75, 148, .35);
     --radius: 10px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    font-family: "Segoe UI", "Heebo", Arial, sans-serif;
+    font-family: "Heebo", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
     background: var(--bg);
     color: var(--text);
     padding: 16px;
     font-size: 14px;
   }
+  input, select, textarea, button { font-family: inherit; }
+  input, select, textarea { color: var(--text); }
   header {
     display: flex; align-items: center; justify-content: space-between;
     flex-wrap: wrap; gap: 10px; margin-bottom: 14px;
@@ -57,26 +67,26 @@
   .btn {
     border: 1px solid var(--border); background: var(--card); color: var(--text);
     padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 13px;
-    font-family: inherit; transition: background .15s;
+    font-family: inherit; transition: background .15s; min-height: 38px;
   }
   .btn:hover { background: var(--accent-soft); }
   .btn:disabled { opacity: .55; cursor: not-allowed; }
   /* Interactive elements carry the brand gradient and shift to purple on hover,
      per the usage guidelines. */
   .btn.primary {
-    background: var(--brand-gradient); border-color: transparent; color: #fff;
+    background: var(--brand-gradient); border-color: transparent; color: var(--on-accent);
     font-weight: 600;
   }
   .btn.primary:hover { background: var(--brand-purple); }
   .btn.primary:disabled { opacity: .6; cursor: wait; }
   .btn:not(.primary):hover { background: var(--accent-soft); border-color: var(--accent); }
-  .btn.small { padding: 4px 9px; font-size: 12px; }
+  .btn.small { padding: 4px 9px; font-size: 12px; min-height: 32px; }
   .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .tabs { display: flex; gap: 4px; margin-bottom: 14px; border-bottom: 1px solid var(--border); }
   .tab {
     padding: 8px 16px; cursor: pointer; border: none; background: none;
     font-family: inherit; font-size: 14px; color: var(--muted);
-    border-bottom: 2px solid transparent; margin-bottom: -1px;
+    border-bottom: 2px solid transparent; margin-bottom: -1px; min-height: 44px;
   }
   .tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
   .stats { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
@@ -89,7 +99,7 @@
   /* Kanban */
   .board { display: flex; gap: 10px; overflow-x: auto; align-items: flex-start; padding-bottom: 8px; }
   .col {
-    background: #eef0f4; border-radius: var(--radius); min-width: 230px; width: 230px;
+    background: var(--surface-subtle); border-radius: var(--radius); min-width: 230px; width: 230px;
     flex-shrink: 0; padding: 8px;
   }
   .col.dragover { outline: 2px dashed var(--accent); }
@@ -103,8 +113,15 @@
   }
   .card.dragging { opacity: .5; }
   .card .name { font-weight: 600; font-size: 13px; margin-bottom: 2px; }
+  .candidate-link {
+    appearance: none; border: 0; background: none; color: var(--accent);
+    padding: 2px 0; font: inherit; font-weight: 600; cursor: pointer;
+    text-decoration: underline; text-decoration-thickness: 1px;
+    text-underline-offset: 3px; text-align: start; min-height: 32px;
+  }
+  .candidate-link:hover { color: var(--purple); }
   .card .meta { color: var(--muted); font-size: 11px; margin-bottom: 6px; }
-  .card .snippet { font-size: 11px; color: #4a5462; max-height: 44px; overflow: hidden; margin-bottom: 6px; }
+  .card .snippet { font-size: 11px; color: var(--text-secondary); max-height: 44px; overflow: hidden; margin-bottom: 6px; }
   .badges { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
   .badge { font-size: 10px; padding: 2px 7px; border-radius: 99px; font-weight: 600; }
   .badge.gmail { background: var(--red-soft); color: var(--red); }
@@ -112,7 +129,7 @@
   .badge.manual { background: var(--purple-soft); color: var(--purple); }
   .badge.score-hi { background: var(--green-soft); color: var(--green); }
   .badge.score-mid { background: var(--amber-soft); color: var(--amber); }
-  .badge.score-lo { background: #eef0f4; color: var(--muted); }
+  .badge.score-lo { background: var(--surface-subtle); color: var(--muted); }
   .badge.crit { background: var(--accent-soft); color: var(--accent); font-weight: 400; }
   .badge.job { background: var(--purple-soft); color: var(--purple); }
   .card .actions { display: flex; gap: 6px; }
@@ -125,7 +142,7 @@
   table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: var(--radius); overflow: hidden; }
   th, td { padding: 9px 12px; text-align: right; border-bottom: 1px solid var(--border); font-size: 13px; }
   th { background: var(--accent-soft); font-size: 12px; color: var(--brand-blue); font-weight: 600; }
-  tr:hover td { background: #fafbfc; }
+  tr:hover td { background: var(--surface-hover); }
   select.stage {
     font-family: inherit; font-size: 12px; padding: 3px 6px; border-radius: 6px;
     border: 1px solid var(--border); background: var(--card);
@@ -141,16 +158,35 @@
   .field label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px; }
   .field input[type=text], .field input[type=password], .field input[type=number], .field textarea {
     width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px;
-    font-family: inherit; font-size: 13px; background: #fff; color: var(--text);
+    font-family: inherit; font-size: 13px; background: var(--card); color: var(--text);
   }
+  .field input[type=date], .field select { min-height: 38px; }
   .field textarea { resize: vertical; min-height: 56px; }
+  .event-editor {
+    border: 1px solid var(--border); background: var(--bg); border-radius: var(--radius);
+    padding: 12px; margin-top: 8px;
+  }
+  .event-grid { display: grid; grid-template-columns: 150px 180px 1fr; gap: 8px; }
+  .timeline { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .timeline-item {
+    position: relative; padding: 10px 14px; padding-inline-start: 22px; background: var(--card);
+    border: 1px solid var(--border); border-radius: 8px;
+  }
+  .timeline-item::before {
+    content: ''; position: absolute; inset-inline-start: -5px; top: 15px;
+    width: 9px; height: 9px; border-radius: 50%; background: var(--accent);
+  }
+  .timeline-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+  .timeline-date { color: var(--muted); font-size: 11px; direction: ltr; }
+  .timeline-meta { color: var(--muted); font-size: 11px; margin-top: 3px; }
+  .timeline-text { font-size: 12px; margin-top: 5px; white-space: pre-wrap; }
   .crit-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: flex-start; }
   .crit-row input:first-child { width: 170px; flex-shrink: 0; }
   .crit-row input:nth-child(2) { flex: 1; }
   .checkrow { display: flex; align-items: center; gap: 6px; font-size: 13px; margin-bottom: 8px; }
   /* Modal */
   .overlay {
-    position: fixed; inset: 0; background: rgba(20,28,40,.45); display: none;
+    position: fixed; inset: 0; background: var(--overlay); display: none;
     align-items: center; justify-content: center; z-index: 50; padding: 16px;
   }
   .overlay.show { display: flex; }
@@ -159,15 +195,15 @@
     max-width: 520px; max-height: 85vh; overflow-y: auto;
   }
   .modal h3 { margin-bottom: 12px; font-size: 16px; }
-  .modal .row { display: flex; gap: 8px; justify-content: flex-start; margin-top: 14px; }
+  .row { display: flex; gap: 8px; justify-content: flex-start; margin-top: 14px; }
   .status-line { font-size: 12px; color: var(--muted); min-height: 18px; margin-bottom: 10px; }
   .status-line.err { color: var(--red); }
   /* Toast — the status line sits at the top of the page, too far from a button
      pressed inside a long form for the feedback to be noticed. */
   #toast {
     position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(10px);
-    background: var(--brand-black); color: #fff; padding: 12px 22px; border-radius: 10px;
-    font-size: 14px; font-weight: 600; box-shadow: 0 6px 24px rgba(0,0,0,.28);
+    background: var(--brand-black); color: var(--on-accent); padding: 12px 22px; border-radius: 10px;
+    font-size: 14px; font-weight: 600; box-shadow: var(--shadow-overlay);
     opacity: 0; pointer-events: none; transition: opacity .18s, transform .18s;
     z-index: 200; max-width: 90vw; text-align: center;
   }
@@ -185,6 +221,21 @@
   #loginScreen h2 { font-size: 20px; margin-bottom: 4px; }
   #loginScreen .hint { color: var(--muted); font-size: 12px; margin-bottom: 16px; }
   #loginMsg { color: var(--red); font-size: 12px; min-height: 16px; margin-top: 8px; }
+  button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 3px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+  @media (max-width: 680px) {
+    body { padding: 10px; }
+    .tabs { overflow-x: auto; white-space: nowrap; }
+    .modal { padding: 16px; max-height: 92vh; }
+    .event-grid { grid-template-columns: 1fr; }
+    .row { flex-wrap: wrap; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+  }
 </style>
 </head>
 <body>
@@ -225,12 +276,12 @@
 </header>
 
 <div class="brand-rule"></div>
-<div class="status-line" id="statusLine"></div>
+<div class="status-line" id="statusLine" role="status" aria-live="polite"></div>
 
 <div class="stats" id="statsBar"></div>
 
-<div class="tabs">
-  <button class="tab active" data-tab="today" onclick="switchTab('today')">🌅 היום שלי</button>
+<div class="tabs" role="tablist" aria-label="אזורים במערכת">
+  <button class="tab active" role="tab" aria-selected="true" data-tab="today" onclick="switchTab('today')">🌅 היום שלי</button>
   <button class="tab" data-tab="board" onclick="switchTab('board')">לוח מועמדים</button>
   <button class="tab" data-tab="dashboard" onclick="switchTab('dashboard')">דשבורד</button>
   <button class="tab" data-tab="list" onclick="switchTab('list')">מועמדים</button>
@@ -291,7 +342,8 @@
       <div class="field" style="flex:1"><label>תאריך איוש</label><input type="date" id="jFilledDate"></div>
     </div>
     <div class="field"><label>סיבה / הסבר (למשל: דחיית לקוח - מחיר גבוה)</label><input type="text" id="jStatusReason"></div>
-    <div class="field"><label>מועמד בתהליך</label><input type="text" id="jCandidateInProcess"></div>
+    <div class="field"><label>מועמדים בתהליך — הערה ידנית (למידע ישן)</label><input type="text" id="jCandidateInProcess"></div>
+    <div class="hint">מועמדים שמשויכים למשרה וטרם סיימו את התהליך מוצגים אוטומטית בטבלת המשרות.</div>
     <div class="field"><label>איש קשר אצל הלקוח</label><input type="text" id="jContact"></div>
 
     <h3 style="margin-top:14px">תנאי המשרה</h3>
@@ -415,14 +467,16 @@
 </div>
 
 <!-- candidate modal -->
-<div class="overlay" id="candModal">
-  <div class="modal">
+<div class="overlay" id="candModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="modal" style="max-width:720px">
     <h3 id="modalTitle">מועמד</h3>
+    <button type="button" class="btn small" onclick="document.getElementById('candidateHistoryHeading').scrollIntoView({block:'start',behavior:'smooth'})">אירועים והיסטוריה ↓</button>
     <div class="field"><label>שם</label><input type="text" id="mName"></div>
     <div class="field"><label>אימייל</label><input type="text" id="mEmail" dir="ltr" style="text-align:left"></div>
     <div class="field"><label>טלפון</label><input type="text" id="mPhone" dir="ltr" style="text-align:left"></div>
     <div class="field"><label>משרה</label>
-      <select id="mJob" style="width:100%; padding:7px"></select>
+      <select id="mJob" style="width:100%; padding:7px" onchange="handleCandidateJobChange()"></select>
+      <div id="mPriorRejections" class="hint" role="status" style="color:var(--red);white-space:pre-wrap"></div>
     </div>
     <div class="field"><label>תפקיד (טקסט חופשי, אם אין משרה משויכת)</label><input type="text" id="mRole"></div>
     <div class="row" style="gap:10px">
@@ -467,7 +521,7 @@
       <div class="hint" id="mTaskHint" style="display:none; color:var(--amber); margin-top:4px">משימה נדרשת רק במשרות רב-תחומי.</div>
     </div>
     <div class="field"><label>סטטוס</label>
-      <select id="mOutcomeStatus" style="width:100%; padding:7px"></select>
+      <select id="mOutcomeStatus" style="width:100%; padding:7px" onchange="handleOutcomeChange()"></select>
     </div>
     <div class="field"><label>תיאור / סיכום השיחה הראשונית</label><textarea id="mSummaryText"></textarea></div>
     <div class="field"><label>תאריך שיחה</label><input type="date" id="mContactedAt"></div>
@@ -491,7 +545,27 @@
       <div class="checkrow"><input type="checkbox" id="mLetterSent"> <label for="mLetterSent" style="font-weight:400">נשלח מכתב שלילה למועמד</label></div>
       <div class="field"><button class="btn small" onclick="draftLetterFor('rejection')">✍️ נסח מכתב שלילה (AI)</button></div>
     </div>
-    <div class="field"><label>הערות</label><textarea id="mNotes"></textarea></div>
+    <div class="field"><label>הערות כלליות</label><textarea id="mNotes"></textarea></div>
+
+    <div style="border-top:1px solid var(--border); padding-top:12px; margin-top:8px">
+      <h3 id="candidateHistoryHeading" style="margin-bottom:3px">אירועים והיסטוריה</h3>
+      <div class="hint">כל אירוע נשמר עם המשרה, הלקוח והתוצאה שהיו באותו רגע. מוצגת ההיסטוריה מכל ההגשות של אותו מועמד. אירועים שכבר נשמרו נשארים בהיסטוריה; לתיקון, הוסף אירוע הבהרה. כל השינויים נשמרים בלחיצה על „שמור“.</div>
+      <div class="event-editor">
+        <div class="event-grid">
+          <div class="field" style="margin:0"><label>תאריך</label><input type="date" id="mEventDate" onchange="document.getElementById('mEventApply').checked=this.value===localDateIso()"></div>
+          <div class="field" style="margin:0"><label>סוג אירוע</label><select id="mEventType" style="width:100%; padding:7px" onchange="fillEventOutcomes()"></select></div>
+          <div class="field" style="margin:0"><label>משרה</label><select id="mEventJob" style="width:100%; padding:7px"></select></div>
+        </div>
+        <div class="field" style="margin-top:8px"><label>תוצאת האירוע</label><select id="mEventOutcome" onchange="fillEventReasons()" style="width:100%;padding:7px"></select></div>
+        <div class="field" id="mEventReasonBox" style="display:none"><label>סיבת הפסילה</label><select id="mEventReason" style="width:100%;padding:7px"></select></div>
+        <div class="field"><label>סיכום שיחה / פידבק / תיעוד האינטראקציה</label><textarea id="mEventDescription" placeholder="מה נאמר, מי השתתף ומה סוכם? בפסילה — פרט את הדרישה שלא התקיימה."></textarea></div>
+        <div class="field"><label>תוצאה / שלב הבא</label><input type="text" id="mEventResult" placeholder="למשל: קורות החיים נשלחו ללקוח"></div>
+        <div class="checkrow"><input type="checkbox" id="mEventApply"><label for="mEventApply">עדכן גם את המצב הנוכחי לפי תוצאת האירוע (למשרה שבכרטיס בלבד)</label></div>
+        <button class="btn" type="button" onclick="addCandidateEvent()">הוסף אירוע</button>
+        <div id="mNextEventHint" class="hint" role="status" style="margin-top:8px"></div>
+      </div>
+      <div id="mTimeline" class="timeline"></div>
+    </div>
     <div id="mAiBox" style="display:none; border-top:1px solid var(--border); padding-top:12px; margin-top:4px">
       <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px">🤖 ניתוח קו"ח (Gemini)</label>
       <div class="hint" style="margin-bottom:8px">צרף קובץ קו"ח (PDF/Word/תמונה) לניתוח, או השאר ריק כדי לנתח את הקובץ מהמייל.</div>
@@ -503,7 +577,7 @@
       </div>
     </div>
     <div class="row">
-      <button class="btn primary" onclick="saveModal()">שמור</button>
+      <button class="btn primary" id="saveCandidateBtn" onclick="saveModal()">שמור</button>
       <button class="btn" onclick="closeModal()">ביטול</button>
     </div>
   </div>
@@ -542,7 +616,7 @@
   </div>
 </div>
 
-<div id="toast"></div>
+<div id="toast" role="status" aria-live="polite"></div>
 
 <!-- Match modal: who in the pool fits this request -->
 <div class="overlay" id="matchModal">
@@ -562,17 +636,17 @@
     <h3>📥 ייבוא מרובה של קורות חיים</h3>
     <div class="hint" style="margin-bottom:8px">
       בחר את כל קבצי הקו"ח בבת אחת (PDF / Word / תמונה — גם אם הגיעו מוואטסאפ עם שמות קבצים אקראיים).
-      לכל קובץ ייווצר מועמד, וה-AI ינתח את הקובץ, ימלא ממנו שם ופרטי קשר, וישייך אותו למשרה המתאימה ביותר — אוטומטית.
+      לכל קובץ ייווצר מועמד, וה-AI ינתח את הקובץ וימלא שם ופרטי קשר. שיוך המשרה והסיווג המקצועי נקבעים ידנית.
     </div>
     <div class="field"><label>שיוך למשרה</label>
       <select id="bulkJob" style="width:100%; padding:7px"></select>
-      <div class="hint" style="margin-top:4px">ברירת המחדל: ה-AI בוחר לבד לאיזו משרה פתוחה כל מועמד מתאים.</div>
+      <div class="hint" style="margin-top:4px">בחר משרה ידנית או השאר ללא משרה לשיוך בהמשך.</div>
     </div>
     <div class="field"><label>קבצים *</label>
       <input type="file" id="bulkFiles" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" multiple>
     </div>
     <div class="hint" id="bulkNoJobsHint" style="display:none; color:var(--amber)">
-      ⚠️ אין משרות פתוחות במערכת, אז אין למה לשייך. הייבוא עדיין יעבוד: כל מועמד ייקרא, יסווג לפי תחום העיסוק שלו וייכנס ללוח — ותוכל לשייך למשרה בהמשך.
+      אין משרות פתוחות. ניתן לייבא ולשייך משרה ידנית בהמשך.
     </div>
     <div class="row">
       <button class="btn primary" id="bulkStartBtn" onclick="startBulkImport()">🚀 התחל ייבוא</button>
@@ -608,6 +682,68 @@ const OUTCOME_STATUSES = [
   'אין מענה', 'מועמד נטש תהליך',
 ];
 
+// Outcome status is the source of truth for whether an application is still
+// open. Previously every screen invented its own rule, which is how a withdrawn
+// candidate could simultaneously appear as "waiting for treatment" and
+// "waiting for a client decision".
+const HIRED_OUTCOMES = new Set(['גוייס/ה']);
+const CLOSED_OUTCOMES = new Set([
+  'צ"ש גבוהות', 'נפסל ע"י לקוח', 'לא תואמ/ת פרופיל', 'נפסל איזור ג"ג',
+  'הסיר/ה מועמדות', 'נשלח מכתב שלילה', 'לקוח ביטל בקשה', 'לא מחפש/ת עבודה',
+  'מועמד נטש תהליך',
+]);
+const IN_PROCESS_OUTCOMES = new Set(['נקבע ראיון', 'קו"ח הועבר ללקוח', 'אושר ע"י הלקוח']);
+
+const EVENT_TYPES = [
+  ['cv_received', 'נקלטו קו״ח'],
+  ['note', 'הערה / עדכון'],
+  ['call', 'שיחה'],
+  ['phone_interview', 'ראיון טלפוני'],
+  ['teams_interview', 'ראיון TEAMS'],
+  ['frontal_interview', 'ראיון פרונטלי'],
+  ['other_role', 'הצעת משרה אחרת'],
+  ['task', 'משימה'],
+  ['sent_to_client', 'שליחת קו"ח ללקוח'],
+  ['client_interview', 'ראיון אצל לקוח'],
+  ['client_decision', 'החלטת לקוח'],
+  ['status', 'שינוי סטטוס'],
+  ['withdrawal', 'הסרת מועמדות'],
+  ['contract', 'חוזה'],
+  ['placement', 'איוש'],
+  ['audit', 'שינוי בכרטיס'],
+  ['baseline', 'מצב קודם שתועד'],
+];
+const EVENT_TYPE_LABELS = Object.fromEntries(EVENT_TYPES);
+
+// Recruiter flow from the supplied workbook. Choices record a human decision.
+const FLOW_OUTCOMES = {
+  phone: ['ראיון טלפוני', { stage: 'phone', outcomeStatus: 'בברור' }],
+  teams: ['מתאים — נקבע ראיון TEAMS', { stage: 'phone', outcomeStatus: 'נקבע ראיון' }],
+  send: ['מתאים — קו״ח יועברו ללקוח', { stage: 'fit_client', outcomeStatus: 'בברור' }],
+  task: ['מתאים — יבצע משימת הדרכה', { gotTask: true, stage: 'frontal', outcomeStatus: 'בברור' }],
+  approve: ['מתאים — הלקוח אישר קליטה', { stage: 'client_approved', outcomeStatus: 'אושר ע"י הלקוח', sentToClient: true, clientApproved: true }],
+  contract: ['חוזה', { stage: 'contract', outcomeStatus: 'בברור' }],
+  placement: ['איוש', { stage: 'staffed', outcomeStatus: 'גוייס/ה' }],
+  reject: ['נפסל', { stage: 'rejected', outcomeStatus: 'לא תואמ/ת פרופיל', rejectedBy: 'us' }],
+  client_reject: ['נפסל על ידי הלקוח', { stage: 'rejected', outcomeStatus: 'נפסל ע"י לקוח', rejectedBy: 'client', sentToClient: true }],
+  withdraw: ['הסיר/ה מועמדות', { stage: 'rejected', outcomeStatus: 'הסיר/ה מועמדות' }],
+};
+const EVENT_FLOW = {
+  cv_received: ['phone', 'reject'], phone_interview: ['teams', 'send', 'reject', 'withdraw'],
+  teams_interview: ['send', 'task', 'reject', 'withdraw'],
+  frontal_interview: ['send', 'task', 'reject', 'withdraw'],
+  task: ['send', 'reject', 'withdraw'], sent_to_client: ['approve', 'client_reject', 'withdraw'],
+  client_interview: ['approve', 'client_reject', 'withdraw'],
+  client_decision: ['contract', 'client_reject', 'withdraw'], contract: ['placement', 'withdraw'],
+};
+const PHYSICAL_REQUIREMENTS_REASON = 'אי־עמידה בדרישות הפיזיות החיוניות לתפקיד';
+const NEXT_EVENT = {phone:'phone_interview', teams:'teams_interview', send:'sent_to_client',
+  task:'task', approve:'client_decision', contract:'contract', placement:'placement'};
+const EVENT_REASONS = {
+  cv_received: ['קו״ח לא רלוונטיים לדרישות התפקיד', 'אין לקוח להציע כרגע', 'ללא ניסיון נדרש', PHYSICAL_REQUIREMENTS_REASON],
+  phone_interview: ['היקף משרה', 'ציפיות שכר גבוהות', 'אזור גיאוגרפי', 'אי־התאמה לפרופיל התפקיד', PHYSICAL_REQUIREMENTS_REASON],
+};
+
 // Where candidates come from — a closed list so the sources chart is meaningful.
 const SOURCE_CHANNELS = [
   'JobMaster (JM)', 'דרושים', 'פייסבוק/ ווצאפ', 'לינקדאין', 'מאגר קו"ח',
@@ -634,6 +770,8 @@ const REQUIREMENT_LEVELS = ['', 'חובה', 'יתרון'];
 
 // Common rejection reasons offered as quick presets in the candidate modal.
 const REJECT_REASONS = [
+  'קו״ח לא רלוונטיים לדרישות התפקיד', 'אין לקוח להציע כרגע', 'ללא ניסיון נדרש', 'היקף משרה',
+  PHYSICAL_REQUIREMENTS_REASON,
   'ציפיות שכר גבוהות',
   'אזור גיאוגרפי',
   'מחפש משרה אחרת',
@@ -771,8 +909,10 @@ function scoreAll() {
     // has no subject or snippet — could never score above 0 no matter how good it
     // was. Search what the AI actually read out of the CV as well.
     const a = c.ai || {};
+    const noteData = readCandidateNotes(c.notes);
     const text = [
-      c.subject, c.snippet, c.notes, c.role, c.jobTitle,
+      c.subject, c.snippet, noteData.text, c.role, c.jobTitle,
+      ...noteData.events.flatMap(e => [e.description, e.result, e.jobTitle]),
       a.summary, a.profession, a.location,
       (a.strengths || []).join(' '),
       (a.matchedKeywords || []).join(' '),
@@ -815,7 +955,7 @@ function todaySection(title, items, renderItem, emptyText) {
 
 function candidateLine(c, extra) {
   return `<div style="display:flex; align-items:center; gap:8px; font-size:13px; padding:4px 0; border-bottom:1px solid var(--border)">
-    <b style="min-width:140px">${esc(c.name)}</b>
+    <span style="min-width:140px">${candidateNameLink(c.id, c.name)}</span>
     <span style="color:var(--muted); flex:1">${esc(c.role || c.jobTitle || '')}${c.city ? ' · ' + esc(c.city) : ''}${extra ? ' · ' + extra : ''}</span>
     <button class="btn small" onclick="openEditModal('${c.id}')">פתח</button>
   </div>`;
@@ -842,7 +982,7 @@ function renderToday() {
   wrap.innerHTML = `
     <div class="stats" style="margin-bottom:12px">
       ${kpi(newOnes.length, 'מועמדים חדשים', sinceText, drillCall('drillToCandidates', 'preset', 'newSince'))}
-      ${kpi(waiting.length, 'ממתינים לטיפול', 'ללא סטטוס / בבירור', drillCall('drillToCandidates', 'preset', 'waiting'))}
+      ${kpi(waiting.length, 'ממתינים לטיפול', 'ללא סטטוס / בבירור / אין מענה', drillCall('drillToCandidates', 'preset', 'waiting'))}
       ${kpi(withClient.length, 'אצל הלקוח', 'הועברו וטרם התקבלה החלטה', drillCall('drillToCandidates', 'preset', 'withClient'))}
       ${kpi(openJobs.length, 'משרות ממתינות לאיוש', '', drillCall('drillToJobs', 'status', 'awaiting'))}
     </div>
@@ -872,13 +1012,14 @@ function renderToday() {
 
 function renderStats() {
   const el = document.getElementById('statsBar');
-  const n = pred => candidates.filter(pred).length;
-  const active = n(c => !['staffed', 'rejected'].includes(c.stage));
-  const interviews = n(c => ['phone', 'frontal', 'client_interview'].includes(c.stage));
-  const staffed = n(c => c.stage === 'staffed');
+  const people = collapseDuplicates(candidates);
+  const n = pred => people.filter(pred).length;
+  const active = n(isCandidateActive);
+  const interviews = n(c => isCandidateActive(c) && ['phone', 'frontal', 'client_interview'].includes(c.stage));
+  const staffed = n(c => lifecycleState(c) === 'hired');
   el.innerHTML = [
-    kpi(candidates.length, 'סה"כ מועמדים', '', "drillToCandidates('', '')"),
-    kpi(active, 'בתהליך פעיל', '', drillCall('drillToCandidates', 'preset', 'active')),
+    kpi(people.length, 'סה"כ מועמדים', '', "drillToCandidates('', '')"),
+    kpi(active, 'בתהליך פעיל', 'בוצע לפחות שלב אחד והתהליך טרם נסגר', drillCall('drillToCandidates', 'preset', 'active')),
     kpi(interviews, 'בשלבי ראיונות', '', drillCall('drillToCandidates', 'preset', 'interviews')),
     kpi(staffed, 'אויישו', '', drillCall('drillToCandidates', 'preset', 'staffed')),
   ].join('');
@@ -901,7 +1042,7 @@ function ils(n) { return n ? '₪' + Math.round(n).toLocaleString('he-IL') : '�
 // "35 with high salary expectations" is only useful if you can see who they are.
 function kpi(value, label, hint, drill) {
   const click = drill
-    ? ` style="min-width:150px; cursor:pointer" onclick="${drill}" title="לחץ לראות מי הם"`
+    ? ` role="button" tabindex="0" style="min-width:150px; cursor:pointer" onclick="${drill}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();${drill}}" title="לחץ לראות מי הם"`
     : ' style="min-width:150px"';
   return `<div class="stat"${click}>
     <div class="num">${value}</div><div class="lbl">${label}</div>
@@ -945,7 +1086,7 @@ function renderDashboard() {
   const interviewed = n(c => c.interviewedTeams);
   const toClient = n(c => c.sentToClient);
   const approved = n(c => c.clientApproved);
-  const hired = n(c => c.stage === 'staffed' || (c.outcomeStatus || '').includes('גוייס'));
+  const hired = n(isHired);
   const salaries = people.map(c => Number(c.salaryExpectation)).filter(v => v > 0);
   const avgSalary = salaries.length ? salaries.reduce((a, b) => a + b, 0) / salaries.length : 0;
 
@@ -1038,6 +1179,78 @@ function renderDashboard() {
 
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 
+function candidateNameLink(id, name) {
+  return `<button type="button" class="candidate-link" onclick="openEditModal('${esc(id)}')" title="פתח את כרטיס המועמד">${esc(name || 'מועמד/ת')}</button>`;
+}
+
+function lifecycleState(c) {
+  const outcome = String(c?.outcomeStatus || '').trim();
+  if (HIRED_OUTCOMES.has(outcome)) return 'hired';
+  if (CLOSED_OUTCOMES.has(outcome)) return 'closed';
+  if (c?.stage === 'staffed') return 'hired';
+  if (c?.stage === 'rejected') return 'closed';
+  return 'active';
+}
+
+function isCandidateOpen(c) { return lifecycleState(c) === 'active'; }
+
+function isCandidateActive(c) {
+  if (!isCandidateOpen(c)) return false;
+  const progressedOnBoard = c.stage && !['applied', 'rejected', 'staffed'].includes(c.stage);
+  return !!(progressedOnBoard || c.interviewedTeams || c.gotTask || c.sentToClient ||
+    c.clientApproved || IN_PROCESS_OUTCOMES.has(String(c.outcomeStatus || '').trim()));
+}
+
+function effectiveBoardStage(c) {
+  const state = lifecycleState(c);
+  if (state === 'hired') return 'staffed';
+  if (state === 'closed') return 'rejected';
+  return c.stage || 'applied';
+}
+
+function reachedClient(c) {
+  return !!(c.sentToClient || c.clientApproved ||
+    ['cv_to_client', 'client_interview', 'client_approved', 'contract', 'staffed'].includes(c.stage));
+}
+
+function isWaitingForTreatment(c) {
+  const outcome = String(c.outcomeStatus || '').trim();
+  return isCandidateOpen(c) && !isCandidateActive(c) && !reachedClient(c) &&
+    (!outcome || ['בברור', 'אין מענה'].includes(outcome));
+}
+
+function isWaitingForClient(c) {
+  return isCandidateOpen(c) && reachedClient(c) && !c.clientApproved && c.stage !== 'client_approved';
+}
+
+function processPatchForOutcome(candidate, outcomeStatus) {
+  const outcome = String(outcomeStatus || '').trim();
+  const patch = { outcomeStatus: outcome };
+  if (HIRED_OUTCOMES.has(outcome)) {
+    Object.assign(patch, { stage: 'staffed', interviewedTeams: true, sentToClient: true, clientApproved: true });
+  } else if (CLOSED_OUTCOMES.has(outcome)) {
+    patch.stage = 'rejected';
+    if (outcome === 'נפסל ע"י לקוח') patch.sentToClient = true;
+  } else if (outcome === 'קו"ח הועבר ללקוח') {
+    Object.assign(patch, { stage: 'cv_to_client', sentToClient: true });
+  } else if (outcome === 'אושר ע"י הלקוח') {
+    Object.assign(patch, { stage: 'client_approved', sentToClient: true, clientApproved: true });
+  } else if (outcome && ['staffed', 'rejected'].includes(candidate?.stage)) {
+    // Re-opening a previously closed application should make it active again.
+    patch.stage = 'applied';
+  }
+  return patch;
+}
+
+function reconcileCandidateProcess(payload, candidate) {
+  const implied = processPatchForOutcome({ ...candidate, stage: payload.stage }, payload.outcomeStatus);
+  Object.assign(payload, implied);
+  // A manually selected final board stage must have the same precedence as an
+  // outcome status. This also handles older records that have no outcome.
+  if (payload.stage === 'staffed' && !payload.outcomeStatus) payload.outcomeStatus = 'גוייס/ה';
+  return payload;
+}
+
 function scoreBadge(c) {
   const max = (settings.criteria || []).filter(x => x.keywords && x.keywords.trim()).length || 1;
   const cls = c.score >= Math.ceil(max * 0.6) ? 'score-hi' : c.score > 0 ? 'score-mid' : 'score-lo';
@@ -1054,7 +1267,7 @@ function aiFacts(c) {
     c.ai.location ? '📍 ' + esc(c.ai.location) : '',
     (c.ai.certifications || []).length ? '🎓 ' + esc((c.ai.certifications || []).slice(0, 3).join(', ')) : '',
   ].filter(Boolean);
-  return bits.length ? `<div class="meta" style="color:#4a5462">${bits.join(' · ')}</div>` : '';
+  return bits.length ? `<div class="meta" style="color:var(--text-secondary)">${bits.join(' · ')}</div>` : '';
 }
 
 function cardHTML(c) {
@@ -1065,10 +1278,10 @@ function cardHTML(c) {
   const jobBadge = c.jobNumber
     ? `<span class="badge job">#${esc(c.jobNumber)} ${esc(c.jobTitle)}</span>` : '';
   const dateStr = displayDate(c);
-  const rejectNote = (c.stage === 'rejected' && (c.rejectionReason || c.rejectedBy))
+  const rejectNote = (lifecycleState(c) === 'closed' && (c.rejectionReason || c.rejectedBy))
     ? `<div class="snippet" style="color:var(--red)">⛔ ${esc(c.rejectionReason || '')}${c.rejectedBy ? ' · ' + (c.rejectedBy === 'client' ? 'נפסל ע"י הלקוח' : 'פסילה פנימית') : ''}</div>` : '';
   return `<div class="card" draggable="true" data-id="${c.id}">
-    <div class="name">${esc(c.name)}</div>
+    <div class="name">${candidateNameLink(c.id, c.name)}</div>
     <div class="meta">${esc(c.email)}${c.phone ? ' · ' + esc(c.phone) : ''}${dateStr ? ' · ' + dateStr : ''}${!c.jobNumber && c.role ? ' · ' + esc(c.role) : ''}</div>
     <div class="badges">${src}${dupBadge(c)}${jobBadge}${scoreBadge(c)}${crits}</div>
     ${aiFacts(c)}
@@ -1094,13 +1307,16 @@ let mergeDuplicates = true;
 // them — only one copy could take the email, since that column is unique — so
 // records are linked on *any* shared key, not on a single chosen one.
 function dupKeys(c) {
+  const scope = c.jobId ? 'job:' + c.jobId : 'role:' + String(c.role || '').trim().toLowerCase();
+  // Applications to different jobs are history, not duplicates. The previous
+  // name-only key merged unrelated people with the same name and also hid a
+  // person's later application behind an older one.
+  if (c.personId) return ['person:' + c.personId + ':' + scope];
   const keys = [];
   const email = (c.email || '').trim().toLowerCase();
-  if (email) keys.push('e:' + email);
+  if (email) keys.push('e:' + email + ':' + scope);
   const phone = (c.phone || '').replace(/\D/g, '');
-  if (phone.length >= 7) keys.push('p:' + phone);
-  const name = (c.name || '').trim().toLowerCase();
-  if (name) keys.push('n:' + name);
+  if (phone.length >= 7) keys.push('p:' + phone + ':' + scope);
   return keys.length ? keys : ['id:' + c.id];
 }
 
@@ -1108,11 +1324,19 @@ function dupKeys(c) {
 // then analyzed, then with contact details.
 function copyWeight(c) {
   let w = 0;
+  if (lifecycleState(c) !== 'active') w += 20;
+  if (c.outcomeStatus) w += 6;
   if (c.stage && c.stage !== 'applied' && c.stage !== 'rejected') w += 8;
   if (c.ai) w += 4;
   if (c.email) w += 2;
   if (c.jobNumber) w += 1;
   return w;
+}
+
+function copyFreshness(c) {
+  const raw = c.contactedAt || c.date || c.addedAt || '';
+  const time = raw ? new Date(raw).getTime() : 0;
+  return Number.isFinite(time) ? time : 0;
 }
 
 function collapseDuplicates(list) {
@@ -1138,7 +1362,11 @@ function collapseDuplicates(list) {
   });
   return [...groups.values()].map(items => {
     if (items.length === 1) return items[0];
-    const best = items.reduce((a, b) => (copyWeight(b) > copyWeight(a) ? b : a));
+    const best = items.reduce((a, b) => {
+      const freshness = copyFreshness(b) - copyFreshness(a);
+      if (Math.abs(freshness) >= 864e5) return freshness > 0 ? b : a;
+      return copyWeight(b) > copyWeight(a) ? b : a;
+    });
     return { ...best, dupCount: items.length };
   });
 }
@@ -1174,7 +1402,7 @@ function byRelevance(a, b) {
 function renderBoard() {
   const board = document.getElementById('board');
   board.innerHTML = STAGES.map(st => {
-    const items = collapseDuplicates(candidates.filter(c => c.stage === st.id)).sort(byRelevance);
+    const items = collapseDuplicates(candidates.filter(c => effectiveBoardStage(c) === st.id)).sort(byRelevance);
     return `<div class="col" data-stage="${st.id}">
       <h3>${st.label} <span class="count">${items.length}</span></h3>
       ${items.map(cardHTML).join('') || ''}
@@ -1190,11 +1418,11 @@ const EMPTY_LIST_FILTERS = { q: '', source: '', analyzed: '', outcome: '', miles
 // Named cuts behind the header counters and the morning screen, so those
 // figures open the same set they counted.
 const LIST_PRESETS = {
-  active:     { label: 'בתהליך פעיל',            test: c => !['staffed', 'rejected'].includes(c.stage) },
-  interviews: { label: 'בשלבי ראיונות',          test: c => ['phone', 'frontal', 'client_interview'].includes(c.stage) },
-  staffed:    { label: 'אויישו',                  test: c => c.stage === 'staffed' },
-  waiting:    { label: 'ממתינים לטיפול',          test: c => !['staffed', 'rejected'].includes(c.stage) && (!c.outcomeStatus || c.outcomeStatus === 'בברור') },
-  withClient: { label: 'אצל הלקוח — ללא החלטה',   test: c => c.sentToClient && !c.clientApproved && !['staffed', 'rejected'].includes(c.stage) },
+  active:     { label: 'בתהליך פעיל — טרם נסגר', test: isCandidateActive },
+  interviews: { label: 'בשלבי ראיונות',          test: c => isCandidateActive(c) && ['phone', 'frontal', 'client_interview'].includes(c.stage) },
+  staffed:    { label: 'אויישו',                  test: c => lifecycleState(c) === 'hired' },
+  waiting:    { label: 'ממתינים לטיפול',          test: isWaitingForTreatment },
+  withClient: { label: 'אצל הלקוח — ללא החלטה',   test: isWaitingForClient },
   newSince:   { label: 'נכנסו מאז הכניסה האחרונה', test: c => sessionSince && (c.addedAt || c.date) && new Date(c.addedAt || c.date) > sessionSince },
 };
 let listFilters = { ...EMPTY_LIST_FILTERS };
@@ -1227,7 +1455,7 @@ function monthOf(c) {
 }
 
 function isHired(c) {
-  return c.stage === 'staffed' || (c.outcomeStatus || '').includes('גוייס');
+  return lifecycleState(c) === 'hired';
 }
 
 /** Jump from a figure on the dashboard to the people behind it. */
@@ -1278,13 +1506,21 @@ const MILESTONE_LABELS = {
 // Saved straight from the table. Marking progress is the bulk of her day; making
 // her open a card for each tick would be the main friction in the tool.
 async function patchCandidate(id, patch, revert) {
+  const before = candidates.find(c => c.id === id);
+  if (before) {
+    const events = automaticEventsForChanges(before, { ...before, ...patch });
+    const parsed = readCandidateNotes(before.notes);
+    patch.notes = composeCandidateNotes(parsed.text, [...events, ...eventsWithBaseline(before, parsed.events)]);
+    patch.expectedNotes = before.notes || '';
+  }
   try {
     const updated = await api('/api/candidates/' + id, {
       method: 'PATCH', body: JSON.stringify(patch),
     });
     const i = candidates.findIndex(x => x.id === id);
     if (i >= 0) candidates[i] = updated;
-    scoreAll(); renderAll();
+    scoreAll(); renderAll(); renderJobs();
+    showToast('✓ העדכון נשמר');
   } catch (err) {
     setStatus('שגיאה בשמירה: ' + err.message, true);
     if (revert) revert();
@@ -1292,11 +1528,32 @@ async function patchCandidate(id, patch, revert) {
 }
 
 function setMilestone(id, field, value) {
-  patchCandidate(id, { [field]: value }, () => renderList());
+  const c = candidates.find(x => x.id === id);
+  if (!c) return;
+  // Open the card so each interaction can carry a conversation summary.
+  openEditModal(id);
+  const input = { interviewedTeams: 'mInterviewedTeams', gotTask: 'mGotTask', sentToClient: 'mSentToClient', clientApproved: 'mClientApproved' }[field];
+  if (input) document.getElementById(input).checked = value;
+  document.getElementById('mEventType').value = {interviewedTeams:'teams_interview', gotTask:'task', sentToClient:'sent_to_client', clientApproved:'client_decision'}[field] || 'note';
+  fillEventOutcomes();
+  document.getElementById('mEventDescription').focus();
+  if (value && field === 'sentToClient') {
+    document.getElementById('mStage').value = 'cv_to_client';
+    document.getElementById('mOutcomeStatus').value = 'קו"ח הועבר ללקוח';
+  }
+  if (value && field === 'clientApproved') {
+    document.getElementById('mStage').value = 'client_approved';
+    document.getElementById('mOutcomeStatus').value = 'אושר ע"י הלקוח';
+    document.getElementById('mSentToClient').checked = true;
+  }
 }
 
 function setOutcome(id, value) {
-  patchCandidate(id, { outcomeStatus: value }, () => renderList());
+  const c = candidates.find(x => x.id === id);
+  if (!c) return;
+  openEditModal(id);
+  document.getElementById('mOutcomeStatus').value = value;
+  handleOutcomeChange();
 }
 
 function matchesListFilters(c) {
@@ -1317,7 +1574,9 @@ function matchesListFilters(c) {
     else if (!c[f.milestone]) return false;
   }
   if (f.q) {
-    const hay = [c.name, c.email, c.phone, c.subject, c.role, c.jobTitle].join(' ').toLowerCase();
+    const noteData = readCandidateNotes(c.notes);
+    const hay = [c.name, c.email, c.phone, c.subject, c.role, c.jobTitle,
+      noteData.text, ...noteData.events.flatMap(e => [e.description, e.result, e.jobTitle])].join(' ').toLowerCase();
     if (!hay.includes(f.q.toLowerCase())) return false;
   }
   return true;
@@ -1327,9 +1586,11 @@ function renderList() {
   const wrap = document.getElementById('listWrap');
   if (!candidates.length) { wrap.innerHTML = '<div class="empty">אין מועמדים עדיין. לחץ "הוסף מועמד" כדי להתחיל.</div>'; return; }
   const opts = id => STAGES.map(s => `<option value="${s.id}" ${s.id === id ? 'selected' : ''}>${s.label}</option>`).join('');
-  const matching = candidates.filter(matchesListFilters);
-  const shown = collapseDuplicates(matching);
-  const hidden = matching.length - shown.length;
+  // Collapse before filtering. Filtering first allowed an obsolete duplicate
+  // to reappear in "waiting" even when the preferred copy had a final status.
+  const uniqueCandidates = collapseDuplicates(candidates);
+  const shown = uniqueCandidates.filter(matchesListFilters);
+  const hidden = candidates.length - uniqueCandidates.length;
   const sel = (v, cur) => v === cur ? 'selected' : '';
   const filterBar = `<div class="panel" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:10px">
     <input type="text" id="listSearch" placeholder="🔍 חיפוש שם / מייל / טלפון / תפקיד"
@@ -1366,7 +1627,7 @@ function renderList() {
     .sort(byRelevance)
     .map(c => `<tr>
       <td style="white-space:nowrap">${displayDate(c)}</td>
-      <td style="min-width:130px"><b>${esc(c.name)}</b> ${dupBadge(c)}
+      <td style="min-width:130px">${candidateNameLink(c.id, c.name)} ${dupBadge(c)}
         ${c.doNotRehire ? '<span class="badge" style="background:var(--red-soft);color:var(--red)">⛔</span>' : ''}
         ${c.email ? `<br><span style="color:var(--muted);font-size:11px">${esc(c.email)}</span>` : ''}</td>
       <td style="white-space:nowrap" dir="ltr">${esc(c.phone || '')}</td>
@@ -1383,7 +1644,7 @@ function renderList() {
       <td style="text-align:center">${tick(c, 'clientApproved')}</td>
       <td><select style="padding:4px; font-size:12px" onchange="setOutcome('${c.id}', this.value)">${statusOpts(c.outcomeStatus)}</select></td>
       <td>${esc(c.sourceChannel || c.referral || '')}</td>
-      <td style="max-width:260px; font-size:11px; color:var(--muted)">${esc((c.summaryText || c.notes || '').slice(0, 160))}</td>
+      <td style="max-width:260px; font-size:11px; color:var(--muted)">${esc((c.summaryText || readCandidateNotes(c.notes).text || '').slice(0, 160))}</td>
       <td style="white-space:nowrap">
         ${c.ai ? `<button class="btn small" onclick="openAnalysisModal('${c.id}')">📄</button>` : ''}
         <button class="btn small" onclick="openEditModal('${c.id}')">✏️</button></td>
@@ -1428,17 +1689,12 @@ function attachDnD() {
 
 async function setStage(id, stage) {
   const c = candidates.find(x => x.id === id);
-  if (!c || c.stage === stage) return;
-  const prev = c.stage;
-  c.stage = stage;
-  renderAll(); // optimistic
-  try {
-    await api('/api/candidates/' + id, { method: 'PATCH', body: JSON.stringify({ stage }) });
-  } catch (err) {
-    c.stage = prev;
-    renderAll();
-    setStatus('שגיאה בעדכון שלב: ' + err.message, true);
-  }
+  if (!c || effectiveBoardStage(c) === stage) return;
+  // Keep the same card/reason/summary workflow for drag-and-drop changes.
+  openEditModal(id);
+  document.getElementById('mStage').value = stage;
+  document.getElementById('mOutcomeStatus').value = stage === 'staffed' ? 'גוייס/ה' : stage === 'rejected' ? 'לא תואמ/ת פרופיל' : 'בברור';
+  toggleRejectFields();
 }
 
 async function delCand(id) {
@@ -1446,7 +1702,7 @@ async function delCand(id) {
   try {
     await api('/api/candidates/' + id, { method: 'DELETE' });
     candidates = candidates.filter(c => c.id !== id);
-    renderAll();
+    renderAll(); renderJobs();
   } catch (err) {
     setStatus('שגיאה במחיקה: ' + err.message, true);
   }
@@ -1457,10 +1713,270 @@ async function clearAll() {
   try {
     await api('/api/candidates', { method: 'DELETE' });
     candidates = [];
-    renderAll();
+    renderAll(); renderJobs();
   } catch (err) {
     setStatus('שגיאה: ' + err.message, true);
   }
+}
+
+/* ---------- Candidate event timeline ---------- */
+// Events are stored inside the existing notes field in a private, encoded
+// block. This keeps the feature compatible with the current API while the
+// ordinary notes remain readable and editable as before.
+const EVENTS_RE = /\n?<!--HBC_EVENTS_V1:([A-Za-z0-9+/=]+)-->/;
+
+function utf8ToBase64(text) {
+  const bytes = new TextEncoder().encode(text);
+  let binary = '';
+  bytes.forEach(b => { binary += String.fromCharCode(b); });
+  return btoa(binary);
+}
+
+function base64ToUtf8(encoded) {
+  const binary = atob(encoded);
+  const bytes = Uint8Array.from(binary, ch => ch.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+function readCandidateNotes(raw) {
+  const value = String(raw || '');
+  const match = value.match(EVENTS_RE);
+  let events = [];
+  if (match) {
+    try {
+      const parsed = JSON.parse(base64ToUtf8(match[1]));
+      if (Array.isArray(parsed)) events = parsed.filter(e => e && e.id && e.type);
+    } catch { /* A damaged private block must never hide the human notes. */ }
+  }
+  return { text: value.replace(EVENTS_RE, '').trim(), events };
+}
+
+function composeCandidateNotes(text, events) {
+  const visible = String(text || '').trim();
+  if (!events || !events.length) return visible;
+  const encoded = utf8ToBase64(JSON.stringify(events));
+  return `${visible}${visible ? '\n' : ''}<!--HBC_EVENTS_V1:${encoded}-->`;
+}
+
+function localDateIso(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function makeEventId() {
+  return globalThis.crypto?.randomUUID?.() || `evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function jobLabelById(id) {
+  const j = jobs.find(x => String(x.id) === String(id));
+  return j ? `#${j.jobNumber} ${j.title}${j.clientName ? ' · ' + j.clientName : ''}` : '';
+}
+
+function makeCandidateEvent(type, description, result, candidate, extras = {}) {
+  const jobId = extras.jobId !== undefined ? extras.jobId : (candidate?.jobId || '');
+  const job = jobs.find(j => String(j.id) === String(jobId));
+  return {
+    id: makeEventId(),
+    type: type || 'note',
+    date: extras.date || localDateIso(),
+    jobId: jobId || '',
+    jobTitle: extras.jobTitle ?? (jobLabelById(jobId) || (String(jobId) === String(candidate?.jobId || '') ? candidate?.jobTitle : '') || ''),
+    clientId: job?.clientId || candidate?.clientId || '',
+    clientName: job?.clientName || candidate?.clientName || '',
+    description: String(description || '').trim(),
+    result: String(result || '').trim(),
+    createdAt: new Date().toISOString(),
+    ...extras,
+  };
+}
+
+function notesWithEvent(candidate, event) {
+  const parsed = readCandidateNotes(candidate?.notes);
+  return composeCandidateNotes(parsed.text, [event, ...eventsWithBaseline(candidate, parsed.events)]);
+}
+
+function eventsWithBaseline(candidate, events) {
+  if (!candidate?.id || events.some(e => e.type === 'baseline' || e.legacy)) return [...events];
+  // Preserve the known current state before the first edit. Earlier overwritten
+  // states cannot be reconstructed and must never be presented as known history.
+  const baseline = legacyEventForApplication(candidate);
+  return baseline ? [...events, baseline] : [...events];
+}
+
+let editingEvents = [];
+let editingCandidateSnapshot = null;
+
+function samePersonApplications(candidate) {
+  if (!candidate) return [];
+  if (candidate.personId) return candidates.filter(c => String(c.personId) === String(candidate.personId));
+  const email = String(candidate.email || '').trim().toLowerCase();
+  const phone = String(candidate.phone || '').replace(/\D/g, '');
+  return candidates.filter(c => c.id === candidate.id ||
+    (email && String(c.email || '').trim().toLowerCase() === email) ||
+    (phone.length >= 7 && String(c.phone || '').replace(/\D/g, '') === phone));
+}
+
+function legacyEventForApplication(c) {
+  const parsed = readCandidateNotes(c.notes);
+  const description = [c.summaryText, parsed.text, c.rejectionReason && 'סיבת פסילה: ' + c.rejectionReason].filter(Boolean).join('\n');
+  const result = c.outcomeStatus || (STAGES.find(s => s.id === c.stage) || {}).label || '';
+  const date = localDateIso();
+  if (!date && !description && !result) return null;
+  return {
+    id: `baseline_${c.id}`,
+    type: 'baseline', date, description, result,
+    jobId: c.jobId || '', jobTitle: jobLabelById(c.jobId) || c.jobTitle || '', legacy: true,
+    clientId: jobs.find(j => String(j.id) === String(c.jobId))?.clientId || c.clientId || '',
+    clientName: jobs.find(j => String(j.id) === String(c.jobId))?.clientName || c.clientName || '',
+    snapshot: processSnapshot(c),
+    createdAt: new Date().toISOString(), _sourceAppId: c.id,
+  };
+}
+
+function timelineEventsForCurrentCandidate() {
+  const current = editingCandidateSnapshot;
+  if (!current) return editingEvents.map(e => ({ ...e, _sourceAppId: 'new' }));
+  const all = [];
+  for (const app of samePersonApplications(current)) {
+    const own = app.id === current.id ? editingEvents : readCandidateNotes(app.notes).events;
+    if (own.length) own.forEach(e => all.push({ ...e, _sourceAppId: app.id }));
+    else {
+      const legacy = legacyEventForApplication(app);
+      if (legacy) all.push(legacy);
+    }
+  }
+  return all.sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) ||
+    (a.type === 'baseline' ? -1 : b.type === 'baseline' ? 1 : String(a.createdAt || '').localeCompare(String(b.createdAt || ''))));
+}
+
+function renderCandidateTimeline() {
+  const wrap = document.getElementById('mTimeline');
+  if (!wrap) return;
+  const events = timelineEventsForCurrentCandidate();
+  if (!events.length) {
+    wrap.innerHTML = '<div class="hint">עדיין אין אירועים. האירוע הראשון ייצור את תחילת ציר הזמן.</div>';
+    return;
+  }
+  wrap.innerHTML = events.map(e => {
+    const savedIds = new Set(readCandidateNotes(editingCandidateSnapshot?.notes).events.map(x => x.id));
+    const canDelete = !e.legacy && !e.automatic && !e.before && !savedIds.has(e.id) && (e._sourceAppId === editingId || e._sourceAppId === 'new');
+    const job = e.jobTitle || jobLabelById(e.jobId);
+    return `<div class="timeline-item">
+      <div class="timeline-head">
+        <b>${esc(EVENT_TYPE_LABELS[e.type] || 'אירוע')}</b>
+        <span class="timeline-date">${esc(e.date || '')}</span>
+        ${canDelete ? `<button type="button" class="btn small" style="margin-inline-start:auto;color:var(--red)" onclick="removeCandidateEvent('${esc(e.id)}')">בטל אירוע שטרם נשמר</button>` : ''}
+      </div>
+      ${job ? `<div class="timeline-meta">${esc(job)}</div>` : ''}
+      ${e.clientName && !job.includes(e.clientName) ? `<div class="timeline-meta">לקוח: ${esc(e.clientName)}</div>` : ''}
+      ${e.description ? `<div class="timeline-text">${esc(e.description)}</div>` : ''}
+      ${e.result ? `<div class="timeline-text"><b>תוצאה:</b> ${esc(e.result)}</div>` : ''}
+      ${e.reason ? `<div class="timeline-text"><b>סיבה:</b> ${esc(e.reason)}</div>` : ''}
+      ${e.before && e.after ? `<div class="timeline-meta">${esc(describeProcessChange(e.before, e.after))}</div>` : ''}
+      ${e.notesBefore !== undefined && e.notesBefore !== e.notesAfter ? `<div class="timeline-text"><b>הערות לפני:</b> ${esc(e.notesBefore || 'ללא')}<br><b>הערות אחרי:</b> ${esc(e.notesAfter || 'ללא')}</div>` : ''}
+      ${e.actor ? `<div class="timeline-meta">תועד על ידי: ${esc(e.actor)}</div>` : ''}
+      ${e.legacy ? '<div class="timeline-meta">מצב שהיה קיים בעת תחילת התיעוד. מועד השינוי המקורי והמצבים שנדרסו קודם אינם ידועים.</div>' : ''}
+    </div>`;
+  }).join('');
+}
+
+function fillEventControls(selectedJobId) {
+  document.getElementById('mEventType').innerHTML = EVENT_TYPES.filter(([id]) => !['audit', 'baseline'].includes(id))
+    .map(([id, label]) => `<option value="${id}">${esc(label)}</option>`).join('');
+  const latest = editingEvents.filter(e => e.after && e.outcome && String(e.jobId || '') === String(selectedJobId || ''))
+    .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))[0];
+  const stageType = {applied:'cv_received', phone:'phone_interview', frontal:'teams_interview', fit_client:'sent_to_client',
+    cv_to_client:'client_decision', client_interview:'client_interview', client_approved:'client_decision', contract:'contract', staffed:'placement', rejected:'note'};
+  document.getElementById('mEventType').value = (latest && NEXT_EVENT[latest.outcome]) || stageType[editingCandidateSnapshot?.stage] || 'cv_received';
+  document.getElementById('mEventJob').innerHTML = '<option value="">— ללא משרה —</option>' +
+    jobs.map(j => `<option value="${j.id}" ${String(j.id) === String(selectedJobId || '') ? 'selected' : ''}>#${esc(j.jobNumber)} ${esc(j.title)}${j.clientName ? ' · ' + esc(j.clientName) : ''}</option>`).join('');
+  document.getElementById('mEventDate').value = localDateIso();
+  document.getElementById('mEventDescription').value = '';
+  document.getElementById('mEventResult').value = '';
+  document.getElementById('mEventApply').checked = true;
+  document.getElementById('mNextEventHint').textContent = latest && NEXT_EVENT[latest.outcome] ?
+    'השלב הבא למילוי: ' + EVENT_TYPE_LABELS[NEXT_EVENT[latest.outcome]] : '';
+  fillEventOutcomes();
+}
+
+function fillEventOutcomes() {
+  const type = document.getElementById('mEventType').value;
+  document.getElementById('mEventOutcome').innerHTML = '<option value="">— תיעוד ללא שינוי תוצאה —</option>' +
+    (EVENT_FLOW[type] || []).map(id => `<option value="${id}">${esc(FLOW_OUTCOMES[id][0])}</option>`).join('');
+  fillEventReasons();
+}
+
+function fillEventReasons() {
+  const type = document.getElementById('mEventType').value;
+  const outcome = document.getElementById('mEventOutcome').value;
+  const rejected = ['reject', 'client_reject'].includes(outcome);
+  document.getElementById('mEventReasonBox').style.display = rejected ? '' : 'none';
+  const reasons = outcome === 'client_reject' ? ['הלקוח בחר מועמד אחר', 'אי־התאמה לדרישות הלקוח', 'לקוח ביטל בקשה', 'אחר — פירוט בסיכום'] :
+    [...(EVENT_REASONS[type] || ['נמצא לא מתאים לדרישות התפקיד', PHYSICAL_REQUIREMENTS_REASON]), 'אחר — פירוט בסיכום'];
+  document.getElementById('mEventReason').innerHTML = '<option value="">— בחר סיבה —</option>' + reasons.map(r => `<option value="${esc(r)}">${esc(r)}</option>`).join('');
+}
+
+function addCandidateEvent() {
+  const description = document.getElementById('mEventDescription').value.trim();
+  const result = document.getElementById('mEventResult').value.trim();
+  const type = document.getElementById('mEventType').value;
+  const outcome = document.getElementById('mEventOutcome').value;
+  const reason = ['reject', 'client_reject'].includes(outcome) ? document.getElementById('mEventReason').value : '';
+  if (!description) { alert('נא למלא סיכום שיחה / פידבק / תיעוד האירוע'); return false; }
+  if (['reject', 'client_reject'].includes(outcome) && !reason) { alert('נא לבחור סיבת פסילה'); return false; }
+  const date = document.getElementById('mEventDate').value;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > localDateIso()) { alert('נא לבחור תאריך אירוע שהתקיים, עד היום'); return false; }
+  const jobId = document.getElementById('mEventJob').value;
+  const apply = document.getElementById('mEventApply').checked;
+  if (apply && String(jobId) !== String(document.getElementById('mJob').value)) {
+    alert('כדי לעדכן מצב נוכחי, בחר את המשרה שבכרטיס. אירוע למשרה אחרת ניתן לשמור כהיסטוריה בלבד.'); return false;
+  }
+  if (['sent_to_client', 'client_interview', 'client_decision', 'contract', 'placement'].includes(type) && !jobId) {
+    alert('לאירוע מול לקוח או לאיוש יש לבחור משרה, כדי שהלקוח יישמר בהיסטוריה.'); return false;
+  }
+  const before = processSnapshot(modalPayload());
+  if (apply) {
+    const eventPatch = { ...(FLOW_OUTCOMES[outcome]?.[1] || {}) };
+    if (type === 'teams_interview') eventPatch.interviewedTeams = true;
+    if (type === 'sent_to_client') eventPatch.sentToClient = true;
+    if (type === 'sent_to_client' && !outcome) Object.assign(eventPatch, {stage: 'cv_to_client', outcomeStatus: 'קו"ח הועבר ללקוח'});
+    if (type === 'withdrawal') Object.assign(eventPatch, {stage: 'rejected', outcomeStatus: 'הסיר/ה מועמדות'});
+    if (type === 'placement') Object.assign(eventPatch, {stage: 'staffed', outcomeStatus: 'גוייס/ה'});
+    for (const [key, id] of Object.entries({stage: 'mStage', outcomeStatus: 'mOutcomeStatus', rejectedBy: 'mRejectedBy'})) {
+      if (eventPatch[key] !== undefined) document.getElementById(id).value = eventPatch[key];
+    }
+    for (const [key, id] of Object.entries({interviewedTeams: 'mInterviewedTeams', sentToClient: 'mSentToClient', clientApproved: 'mClientApproved', gotTask: 'mGotTask'})) {
+      if (eventPatch[key] !== undefined) document.getElementById(id).checked = eventPatch[key];
+    }
+    if (reason) document.getElementById('mRejectReason').value = reason;
+    toggleRejectFields();
+  }
+  editingEvents.unshift(makeCandidateEvent(
+    type, description, [FLOW_OUTCOMES[outcome]?.[0], result].filter(Boolean).join(' · '), editingCandidateSnapshot,
+    { date, jobId, jobTitle: jobLabelById(jobId), reason, outcome, before: apply ? before : undefined,
+      after: apply ? processSnapshot(modalPayload()) : undefined, actor: getUser()?.username || '' }
+  ));
+  document.getElementById('mEventDescription').value = '';
+  document.getElementById('mEventResult').value = '';
+  if (NEXT_EVENT[outcome]) {
+    document.getElementById('mEventType').value = NEXT_EVENT[outcome];
+    document.getElementById('mEventDate').value = localDateIso();
+    document.getElementById('mNextEventHint').textContent = 'האירוע נוסף. השלב הבא נפתח למילוי: ' + EVENT_TYPE_LABELS[NEXT_EVENT[outcome]] + '. יש לתעד אותו לאחר שיתקיים.';
+  } else {
+    document.getElementById('mNextEventHint').textContent = 'האירוע נוסף להיסטוריה. לחץ „שמור“ לשמירה.';
+  }
+  fillEventOutcomes();
+  renderCandidateTimeline();
+  renderPriorRejections();
+  return true;
+}
+
+function removeCandidateEvent(id) {
+  if (readCandidateNotes(editingCandidateSnapshot?.notes).events.some(e => e.id === id)) return;
+  editingEvents = editingEvents.filter(e => e.id !== id);
+  renderCandidateTimeline();
 }
 
 /* ---------- Modal ---------- */
@@ -1474,9 +1990,37 @@ function fillJobSelect(selectedId) {
     '<option value="">— ללא משרה —</option>' +
     open.map(j => `<option value="${j.id}" ${j.id === selectedId ? 'selected' : ''}>#${esc(j.jobNumber)} ${esc(j.title)}${j.clientName ? ' · ' + esc(j.clientName) : ''}</option>`).join('');
 }
+function handleCandidateJobChange() {
+  const id = document.getElementById('mJob').value;
+  const job = jobs.find(j => String(j.id) === String(id));
+  document.getElementById('mTaskHint').style.display = job && job.track !== 'multi' ? '' : 'none';
+  const eventJob = document.getElementById('mEventJob');
+  if (eventJob) eventJob.value = id;
+  renderPriorRejections();
+}
+
+function renderPriorRejections() {
+  const box = document.getElementById('mPriorRejections');
+  const jobId = document.getElementById('mJob').value;
+  const job = jobs.find(j => String(j.id) === String(jobId));
+  const past = timelineEventsForCurrentCandidate().filter(e =>
+    (jobId && String(e.jobId) === String(jobId) || job?.clientId && String(e.clientId) === String(job.clientId)) &&
+    (e.reason || ['reject', 'client_reject', 'withdraw'].includes(e.outcome) || e.after?.stage === 'rejected' || e.snapshot?.stage === 'rejected'));
+  box.textContent = past.length ? 'לתשומת לב: קיים תהליך קודם שנסגר מול המשרה או הלקוח הזה.\n' +
+    past.map(e => `${e.date || ''} · ${e.jobTitle || e.clientName || ''} · ${e.reason || e.snapshot?.rejectionReason || e.after?.rejectionReason || e.result || ''}`).join('\n') : '';
+}
 function toggleRejectFields() {
   const show = document.getElementById('mStage').value === 'rejected';
   document.getElementById('mRejectBox').style.display = show ? '' : 'none';
+}
+function handleOutcomeChange() {
+  const current = editingCandidateSnapshot || { stage: document.getElementById('mStage').value };
+  const implied = processPatchForOutcome(current, document.getElementById('mOutcomeStatus').value);
+  if (implied.stage) document.getElementById('mStage').value = implied.stage;
+  if (implied.sentToClient) document.getElementById('mSentToClient').checked = true;
+  if (implied.clientApproved) document.getElementById('mClientApproved').checked = true;
+  if (implied.interviewedTeams) document.getElementById('mInterviewedTeams').checked = true;
+  toggleRejectFields();
 }
 function fillRejectPresets() {
   document.getElementById('mRejectPreset').innerHTML =
@@ -1538,6 +2082,8 @@ function fillModalDetails(c) {
 
 function openAddModal() {
   editingId = null;
+  editingCandidateSnapshot = null;
+  editingEvents = [];
   fillStageSelect();
   fillModalSelects();
   fillModalDetails(null);
@@ -1551,12 +2097,18 @@ function openAddModal() {
   document.getElementById('mLetterSent').checked = false;
   toggleRejectFields();
   document.getElementById('mAiBox').style.display = 'none'; // analysis available after saving
+  fillEventControls('');
+  renderCandidateTimeline();
+  renderPriorRejections();
   document.getElementById('candModal').classList.add('show');
 }
 function openEditModal(id) {
   const c = candidates.find(x => x.id === id);
   if (!c) return;
   editingId = id;
+  editingCandidateSnapshot = { ...c };
+  const parsedNotes = readCandidateNotes(c.notes);
+  editingEvents = eventsWithBaseline(c, parsedNotes.events).map(e => ({ ...e }));
   fillStageSelect();
   fillModalSelects();
   fillModalDetails(c);
@@ -1568,8 +2120,8 @@ function openEditModal(id) {
   document.getElementById('mPhone').value = c.phone || '';
   document.getElementById('mRole').value = c.role || '';
   document.getElementById('mReferral').value = c.referral || '';
-  document.getElementById('mStage').value = c.stage;
-  document.getElementById('mNotes').value = c.notes || '';
+  document.getElementById('mStage').value = effectiveBoardStage(c);
+  document.getElementById('mNotes').value = parsedNotes.text;
   fillRejectPresets();
   document.getElementById('mRejectPreset').value = '';
   document.getElementById('mRejectReason').value = c.rejectionReason || '';
@@ -1580,9 +2132,12 @@ function openEditModal(id) {
   document.getElementById('mAiBox').style.display = '';
   document.getElementById('mCvFile').value = '';
   document.getElementById('mShowAnalysis').style.display = c.ai ? '' : 'none';
+  fillEventControls(c.jobId || '');
+  renderCandidateTimeline();
+  renderPriorRejections();
   document.getElementById('candModal').classList.add('show');
 }
-function closeModal() { document.getElementById('candModal').classList.remove('show'); }
+function closeModal() { document.getElementById('candModal').classList.remove('show'); renderAll(); }
 
 /* ---------- AI analysis (Gemini) ---------- */
 function fileToBase64(file) {
@@ -1607,7 +2162,7 @@ async function analyzeCandidate(id, file) {
   showBusy('🤖 מנתח קו"ח של ' + c.name + '…');
   try {
     const updated = await api('/api/candidates/' + id + '/analyze', {
-      method: 'POST', body: JSON.stringify(file ? { file } : {}),
+      method: 'POST', body: JSON.stringify({ ...(file ? { file } : {}), autoMatch: false, manualClassification: true }),
     });
     const i = candidates.findIndex(x => x.id === id);
     if (i >= 0) candidates[i] = updated;
@@ -1680,7 +2235,7 @@ async function analyzeNew() {
     setBusy(`🤖 מנתח ${done + failed + skipped + 1}/${list.length}: ${c.name}`);
     try {
       const updated = await api('/api/candidates/' + c.id + '/analyze', {
-        method: 'POST', body: JSON.stringify({ autoMatch: true, fileOnly: true }),
+        method: 'POST', body: JSON.stringify({ autoMatch: false, manualClassification: true, fileOnly: true }),
       });
       const i = candidates.findIndex(x => x.id === c.id); if (i >= 0) candidates[i] = updated;
       done++;
@@ -1758,7 +2313,7 @@ async function matchJob(jobId) {
     const cls = r.score >= 70 ? 'score-hi' : r.score >= 40 ? 'score-mid' : 'score-lo';
     return `<tr>
       <td>
-        <b>${esc(r.name)}</b>${r.doNotRehire ? ' <span class="badge" style="background:var(--red-soft);color:var(--red)">⛔ לא לגייס</span>' : ''}
+        ${candidateNameLink(r.candidateId, r.name)}${r.doNotRehire ? ' <span class="badge" style="background:var(--red-soft);color:var(--red)">⛔ לא לגייס</span>' : ''}
         <div style="color:var(--muted); font-size:11px">
           ${esc(r.role || '')}${r.city ? ' · ' + esc(r.city) : ''}${r.salaryExpectation ? ' · צ"ש ' + ils(r.salaryExpectation) : ''}
         </div>
@@ -2137,7 +2692,7 @@ async function importWorkbook(input) {
 function openBulkImportModal() {
   const open = jobs.filter(j => j.status === 'awaiting');
   document.getElementById('bulkJob').innerHTML =
-    '<option value="auto" selected>🤖 שיוך אוטומטי — שה-AI יחליט</option>' +
+    '<option value="" selected>— ללא משרה — שיוך ידני בהמשך</option>' +
     open.map(j => `<option value="${j.id}">#${esc(j.jobNumber)} ${esc(j.title)}${j.clientName ? ' · ' + esc(j.clientName) : ''}</option>`).join('');
   document.getElementById('bulkNoJobsHint').style.display = open.length ? 'none' : '';
   document.getElementById('bulkFiles').value = '';
@@ -2175,12 +2730,11 @@ async function bulkCreateCandidate(name, jobId) {
 
 async function startBulkImport() {
   const jobChoice = document.getElementById('bulkJob').value;
-  const autoMatch = jobChoice === 'auto';
-  const jobId = autoMatch ? null : jobChoice;
-  if (!autoMatch && !jobId) { alert('נא לבחור משרה'); return; }
+  const autoMatch = false;
+  const jobId = jobChoice || null;
   const files = Array.from(document.getElementById('bulkFiles').files || []);
   if (!files.length) { alert('נא לבחור קבצים'); return; }
-  const target = autoMatch ? 'עם שיוך אוטומטי למשרות' : 'מול המשרה שנבחרה';
+  const target = jobId ? 'מול המשרה שנבחרה ידנית' : 'ללא שיוך למשרה';
   if (!confirm(`לייבא ולנתח ${files.length} קבצים ${target}? הפעולה כרוכה בעלות שימוש ב-API ועשויה לקחת כמה דקות.`)) return;
 
   document.getElementById('bulkStartBtn').disabled = true;
@@ -2200,7 +2754,7 @@ async function startBulkImport() {
       const dataBase64 = await fileToBase64(f);
       const analyzed = await api('/api/candidates/' + created.id + '/analyze', {
         method: 'POST',
-        body: JSON.stringify({ file: { filename: f.name, mimeType: f.type, dataBase64 }, autoMatch }),
+        body: JSON.stringify({ file: { filename: f.name, mimeType: f.type, dataBase64 }, autoMatch: false, manualClassification: true }),
       });
 
       // The AI read the actual name/email/phone off the CV — use it to replace
@@ -2264,15 +2818,57 @@ function modalPayload() {
     summaryText: document.getElementById('mSummaryText').value,
     contactedAt: v('mContactedAt'),
     jobId: document.getElementById('mJob').value || null,
-    stage, notes: document.getElementById('mNotes').value,
+    stage, notes: composeCandidateNotes(document.getElementById('mNotes').value, editingEvents),
     rejectionReason: stage === 'rejected' ? v('mRejectReason') : '',
     rejectedBy: stage === 'rejected' ? document.getElementById('mRejectedBy').value : '',
     rejectionLetterSent: stage === 'rejected' ? document.getElementById('mLetterSent').checked : false,
   };
 }
 
+function automaticEventsForChanges(before, payload) {
+  const prior = processSnapshot(before || {});
+  const next = processSnapshot(payload);
+  const description = before ? describeProcessChange(prior, next) : 'מועמד/ת נוסף/ה למערכת';
+  if (before && !description) return [];
+  return [makeCandidateEvent(payload.outcomeStatus === 'הסיר/ה מועמדות' ? 'withdrawal' : 'audit',
+    description, payload.outcomeStatus || '', payload,
+    { automatic: true, before: prior, after: next, actor: getUser()?.username || '' })];
+}
+
+function processSnapshot(c) {
+  const keys = ['jobId', 'stage', 'outcomeStatus', 'rejectionReason', 'rejectedBy', 'summaryText',
+    'interviewedTeams', 'gotTask', 'sentToClient', 'clientApproved', 'rejectionLetterSent', 'role', 'contactedAt'];
+  const job = jobs.find(j => String(j.id) === String(c.jobId));
+  return { ...Object.fromEntries(keys.map(k => [k, c[k] ?? (['interviewedTeams', 'gotTask', 'sentToClient', 'clientApproved', 'rejectionLetterSent'].includes(k) ? false : '')])),
+    jobTitle: jobLabelById(c.jobId) || c.jobTitle || '', clientId: job?.clientId || c.clientId || '', clientName: job?.clientName || c.clientName || '' };
+}
+
+function describeProcessChange(before, after) {
+  const labels = {jobId:'משרה', stage:'שלב', outcomeStatus:'סטטוס', rejectionReason:'סיבת פסילה', rejectedBy:'נפסל על ידי',
+    summaryText:'סיכום שיחה', interviewedTeams:'ראיון TEAMS', gotTask:'משימה', sentToClient:'הועבר ללקוח', clientApproved:'אישור לקוח',
+    rejectionLetterSent:'מכתב שלילה', role:'סיווג מקצועי', contactedAt:'תאריך שיחה'};
+  const display = (k, v) => typeof v === 'boolean' ? (v ? 'כן' : 'לא') :
+    k === 'stage' ? STAGES.find(s => s.id === v)?.label || v || 'ללא' :
+    k === 'jobId' ? jobLabelById(v) || v || 'ללא משרה' : k === 'rejectedBy' ? ({us:'אנחנו',client:'הלקוח'}[v] || 'ללא') : v || 'ללא';
+  return Object.keys(labels).filter(k => String(before[k] ?? '') !== String(after[k] ?? ''))
+    .map(k => `${labels[k]} — קודם: ${k === 'jobId' ? before.jobTitle || display(k, before[k]) : display(k, before[k])}; כעת: ${k === 'jobId' ? after.jobTitle || display(k, after[k]) : display(k, after[k])}`).join('\n');
+}
+
 async function saveModal() {
-  const payload = modalPayload();
+  const button = document.getElementById('saveCandidateBtn');
+  if (button.disabled) return;
+  if (document.getElementById('mEventDescription').value.trim() || document.getElementById('mEventResult').value.trim() || document.getElementById('mEventOutcome').value) {
+    if (!addCandidateEvent()) return;
+  }
+  const payload = reconcileCandidateProcess(modalPayload(), editingCandidateSnapshot);
+  if (!payload.name) { alert('נא להזין שם'); return; }
+  if (payload.stage === 'rejected' && payload.outcomeStatus !== 'הסיר/ה מועמדות' && !payload.rejectionReason) {
+    alert('נא למלא סיבת פסילה כדי שתישמר בהיסטוריה'); return;
+  }
+  const autoEvents = automaticEventsForChanges(editingCandidateSnapshot, payload);
+  payload.notes = composeCandidateNotes(document.getElementById('mNotes').value, [...autoEvents, ...editingEvents]);
+  if (editingId) payload.expectedNotes = editingCandidateSnapshot?.notes || '';
+  button.disabled = true;
   try {
     if (editingId) {
       const updated = await api('/api/candidates/' + editingId, {
@@ -2282,15 +2878,33 @@ async function saveModal() {
       if (i >= 0) candidates[i] = updated;
     } else {
       if (!payload.name) { alert('נא להזין שם'); return; }
-      const created = await createCandidateWithDedup(payload);
+      let created = await createCandidateWithDedup(payload);
       if (!created) return; // user cancelled the duplicate prompt
+      // If the follow-up patch fails, retry updates this record instead of
+      // creating another candidate/application.
+      editingId = created.id;
+      editingCandidateSnapshot = { ...created };
       candidates.push(created);
+      payload.expectedNotes = created.notes || '';
+      // The create endpoint intentionally accepts a smaller legacy payload.
+      // Patch once with the full card so milestones, rejection details and the
+      // event timeline entered before the first save are not lost.
+      created = await api('/api/candidates/' + created.id, {
+        method: 'PATCH', body: JSON.stringify(payload),
+      });
+      const idx = candidates.findIndex(c => c.id === created.id);
+      if (idx >= 0) candidates[idx] = created;
     }
     scoreAll();
     closeModal();
     renderAll();
+    renderJobs();
+    showToast('✓ כרטיס המועמד נשמר');
   } catch (err) {
     setStatus('שגיאה בשמירה: ' + err.message, true);
+    alert('השמירה לא הושלמה: ' + err.message);
+  } finally {
+    button.disabled = false;
   }
 }
 
@@ -2536,7 +3150,13 @@ function renderJobs() {
   if (!shown.length) { wrap.innerHTML = '<div class="empty">אין בקשות התואמות לסינון.</div>'; return; }
 
   const rows = shown.map(j => {
-    const count = candidates.filter(c => c.jobId === j.id).length;
+    const linked = collapseDuplicates(candidates.filter(c => c.jobId === j.id));
+    const activeCandidates = linked.filter(isCandidateActive);
+    const autoNames = activeCandidates.map(c => candidateNameLink(c.id, c.name)).join('<br>');
+    const manual = String(j.candidateInProcess || '').trim();
+    const manualAlreadyShown = manual && activeCandidates.some(c => manual.includes(c.name));
+    const processNames = [autoNames, manual && !manualAlreadyShown
+      ? `<span style="color:var(--muted);font-size:11px">הערה ידנית: ${esc(manual)}</span>` : ''].filter(Boolean).join('<br>');
     const reqs = Object.entries(j.requirements || {})
       .map(([k, v]) => `<span class="badge crit" title="${esc(v)}">${esc(k)}${v === 'חובה' ? '*' : ''}</span>`)
       .join(' ');
@@ -2550,10 +3170,10 @@ function renderJobs() {
       <td>${esc(j.clientName || '')}${j.contact ? `<br><span style="color:var(--muted);font-size:11px">${esc(j.contact)}</span>` : ''}</td>
       <td><b>${esc(j.title)}</b><br><span style="color:var(--muted);font-size:11px">#${esc(j.jobNumber)}</span></td>
       <td>${esc(j.location || '')}</td>
-      <td>${esc(j.candidateInProcess || '')}</td>
+      <td>${processNames || '<span style="color:var(--muted)">—</span>'}</td>
       <td>${esc(j.salaryRange || j.rate || '')}</td>
       <td style="max-width:220px">${reqs || '<span style="color:var(--muted)">—</span>'}</td>
-      <td>${count}</td>
+      <td title="${linked.length} מועמדים משויכים בסך הכל">${activeCandidates.length} פעילים${linked.length !== activeCandidates.length ? ` / ${linked.length} סה"כ` : ''}</td>
       <td style="white-space:nowrap">
         <button class="btn small" onclick="matchJob('${j.id}')" title="מי מהמאגר מתאים למשרה הזו">🎯</button>
         <button class="btn small" onclick="copyJobText('${j.id}')" title="העתק כטקסט למחולל מודעות">📋</button>
@@ -2781,6 +3401,7 @@ async function saveJob() {
     }
     resetJobForm();
     renderJobs();
+    showToast('✓ המשרה נשמרה');
     const m = document.getElementById('jobMsg'); m.textContent = '✓ נשמר'; setTimeout(() => m.textContent = '', 2000);
   } catch (err) {
     setStatus('שגיאה בשמירת משרה: ' + err.message, true);
@@ -2860,6 +3481,7 @@ async function saveClient() {
     }
     resetClientForm();
     renderClients();
+    showToast('✓ הלקוח נשמר');
     const m = document.getElementById('clientMsg'); m.textContent = '✓ נשמר'; setTimeout(() => m.textContent = '', 2000);
   } catch (err) {
     setStatus('שגיאה בשמירת לקוח: ' + err.message, true);
@@ -2881,9 +3503,15 @@ async function delClient(id) {
 
 /* ---------- Tabs ---------- */
 function switchTab(t) {
-  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
-  document.querySelectorAll('.tabview').forEach(v => v.style.display = 'none');
-  document.getElementById('tab-' + t).style.display = '';
+  document.querySelectorAll('.tab').forEach(b => {
+    const active = b.dataset.tab === t;
+    b.classList.toggle('active', active);
+    b.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+  document.querySelectorAll('.tabview').forEach(v => { v.style.display = 'none'; v.setAttribute('aria-hidden', 'true'); });
+  const view = document.getElementById('tab-' + t);
+  view.style.display = '';
+  view.setAttribute('aria-hidden', 'false');
   if (t === 'settings') { renderSettings(); loadConnections(); }
   if (t === 'jobs') renderJobs();
   if (t === 'clients') renderClients();
@@ -2891,7 +3519,40 @@ function switchTab(t) {
   if (t === 'today') renderToday();
 }
 
+function setupAccessibility() {
+  document.querySelectorAll('.field label').forEach(label => {
+    if (label.htmlFor) return;
+    const control = label.parentElement?.querySelector('input, select, textarea');
+    if (control?.id) label.htmlFor = control.id;
+  });
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.setAttribute('role', 'tab');
+    tab.setAttribute('aria-controls', 'tab-' + tab.dataset.tab);
+    tab.setAttribute('aria-selected', tab.classList.contains('active') ? 'true' : 'false');
+  });
+  document.querySelectorAll('.tabview').forEach(view => {
+    view.setAttribute('role', 'tabpanel');
+    view.setAttribute('aria-hidden', view.style.display === 'none' ? 'true' : 'false');
+  });
+  document.querySelectorAll('.overlay').forEach(overlay => {
+    if (!overlay.hasAttribute('role')) overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+  });
+}
+
+document.addEventListener('keydown', event => {
+  if (event.key !== 'Escape') return;
+  const open = [...document.querySelectorAll('.overlay.show')].reverse()[0];
+  if (!open || open.id === 'busyOverlay') return;
+  const closers = {
+    candModal: closeModal, letterModal: closeLetterModal, aiModal: closeAiModal,
+    matchModal: closeMatchModal, bulkModal: closeBulkModal,
+  };
+  if (closers[open.id]) closers[open.id]();
+});
+
 /* ---------- Init ---------- */
+setupAccessibility();
 if (getToken()) {
   showApp();
   loadData().then(() => { loadConnections(); handleOAuthReturn(); });

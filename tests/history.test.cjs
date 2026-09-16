@@ -1,0 +1,25 @@
+const assert = require('node:assert/strict');
+const { appendHistory, readNotes, composeNotes } = require('../backend/dist/lib/history.js');
+const original = {id:'10', jobId:'1', jobTitle:'Site A', clientId:'A', clientName:'Client A',
+  stage:'rejected', outcomeStatus:'נפסל ע"י לקוח', rejectionReason:'ללא ניסיון נדרש', notes:'original notes'};
+const first = appendHistory(original, {jobId:'2', jobTitle:'Site B', clientId:'B', clientName:'Client B', stage:'phone', outcomeStatus:'בברור', rejectionReason:''}, 'recruiter');
+const history = readNotes(first);
+assert.equal(history.events.length, 2);
+assert.equal(history.events[0].snapshot.rejectionReason, 'ללא ניסיון נדרש');
+assert.equal(history.events[0].jobId, '1');
+assert.equal(history.events[1].before.jobTitle, 'Site A');
+assert.equal(history.events[1].after.jobTitle, 'Site B');
+const current = {...original, notes:first, jobId:'2', stage:'phone'};
+const forged = {...history.events[0], result:'replace previous history'};
+const extra = {id:'interaction-1', type:'phone_interview', description:'conversation', result:'teams', date:'2026-09-16'};
+const second = appendHistory(current, {notes:composeNotes('new notes', [forged, extra])}, 'other-user');
+const saved = readNotes(second);
+assert.equal(saved.events.find(e=>e.id===forged.id).result, original.outcomeStatus);
+assert.equal(saved.events.filter(e=>e.type==='baseline').length, 1);
+assert.equal(saved.events.find(e=>e.id===extra.id).actor, 'other-user');
+assert.equal(saved.events.at(-1).notesBefore, 'original notes');
+assert.equal(saved.events.at(-1).notesAfter, 'new notes');
+const retried = appendHistory({...current,notes:second}, {notes:second}, 'other-user');
+assert.equal(readNotes(retried).events.length, saved.events.length);
+assert.throws(()=>readNotes('<!--HBC_EVENTS_V1:bm90LWpzb24=-->'));
+console.log('append-only history, old job snapshots, note revisions and retry tests: OK');

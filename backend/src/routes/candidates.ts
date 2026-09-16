@@ -6,9 +6,9 @@ import { findOrCreatePerson, findPerson, normalizeEmail, normalizePhone } from '
 import { getProvider } from '../providers/index.js';
 import { encrypt, decrypt } from '../lib/crypto.js';
 import { prepareCvParts, type GeminiPart } from '../lib/cv.js';
-import { analyzeCv, analyzeCvAutoMatch, draftLetter, isConfigured as geminiConfigured } from '../lib/gemini.js';
-import type { JobOption } from '../lib/gemini.js';
+import { analyzeCv, draftLetter, isConfigured as geminiConfigured } from '../lib/gemini.js';
 import type { CvAttachment } from '../providers/types.js';
+import { appendHistory } from '../lib/history.js';
 
 const router = Router();
 
@@ -28,10 +28,12 @@ const REJECTED_BY = ['us', 'client'];
 const SELECT_CANDIDATE =
   `SELECT a.*, p.name, p.email, p.phone, p.referral,
           p.region, p.city, p.national_id, p.do_not_rehire, p.do_not_rehire_reason,
-          j.job_number, j.title AS job_title, j.track AS job_track
+          j.job_number, j.title AS job_title, j.track AS job_track,
+          j.client_id, cl.name AS client_name
    FROM applications a
    JOIN people p ON p.id = a.person_id
-   LEFT JOIN jobs j ON j.id = a.job_id`;
+   LEFT JOIN jobs j ON j.id = a.job_id
+   LEFT JOIN clients cl ON cl.id = j.client_id`;
 
 function rowToCandidate(r: any) {
   return {
@@ -71,6 +73,8 @@ function rowToCandidate(r: any) {
     jobId: r.job_id != null ? String(r.job_id) : '',
     jobNumber: r.job_number ?? '',
     jobTitle: r.job_title ?? '',
+    clientId: r.client_id != null ? String(r.client_id) : '',
+    clientName: r.client_name ?? '',
     rejectionReason: r.rejection_reason ?? '',
     rejectedBy: r.rejected_by ?? '',
     rejectionLetterSent: !!r.rejection_letter_sent,
@@ -242,12 +246,31 @@ router.patch('/:id', asyncHandler(async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    const cur = await client.query('SELECT person_id FROM applications WHERE id = $1', [req.params.id]);
+    const cur = await client.query(`${SELECT_CANDIDATE} WHERE a.id = $1 FOR UPDATE OF a`, [req.params.id]);
     if (!cur.rows[0]) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'מועמד לא נמצא' });
     }
     const personId = cur.rows[0].person_id;
+    const current = rowToCandidate(cur.rows[0]);
+    if (b.jobId !== undefined && String(b.jobId || '') !== current.jobId) {
+      const job = b.jobId ? (await client.query(
+        'SELECT j.title, j.client_id, c.name AS client_name FROM jobs j LEFT JOIN clients c ON c.id = j.client_id WHERE j.id = $1', [b.jobId]
+      )).rows[0] : null;
+      b.jobTitle = job?.title || '';
+      b.clientId = job?.client_id != null ? String(job.client_id) : '';
+      b.clientName = job?.client_name || '';
+    }
+    if (b.expectedNotes !== undefined && String(b.expectedNotes) !== current.notes) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'הכרטיס עודכן מאז שנפתח. העתק את התיעוד החדש, רענן את המערכת ופתח את הכרטיס מחדש לפני שמירה.' });
+    }
+    try {
+      b.notes = appendHistory(current, b, req.user?.username || '');
+    } catch {
+      await client.query('ROLLBACK');
+      return res.status(422).json({ error: 'ההיסטוריה אינה תקינה. השמירה נעצרה כדי לא לאבד תיעוד קיים.' });
+    }
 
     // Application-level fields.
     const aFields: string[] = [];
@@ -402,62 +425,19 @@ router.post('/:id/analyze', asyncHandler(async (req, res) => {
   // autoMatch: let the AI pick which open job this CV fits, instead of scoring
   // against a job the user had to choose up front.
   let analysis;
-  let matchedJobId: string | null = null;
-  // Only auto-match when nothing is assigned yet — never silently move a
-  // candidate the user already placed on a job.
-  const openJobs = req.body?.autoMatch && !row.job_id
-    ? await pool.query(
-        `SELECT j.id, j.job_number, j.title, j.keywords, j.description,
-                c.name AS client_name, c.looking_for AS client_looking_for
-         FROM jobs j LEFT JOIN clients c ON c.id = j.client_id
-         WHERE j.status = 'awaiting'
-         ORDER BY j.created_at DESC`
-      )
-    : null;
-  // With no open jobs there is nothing to match against, but the CV should still
-  // be read and classified — fall through to the plain (job-less) analysis.
-  if (openJobs?.rows.length) {
-    const options: JobOption[] = openJobs.rows.map(j => ({
-      id: String(j.id),
-      jobNumber: j.job_number,
-      title: j.title,
-      keywords: j.keywords,
-      description: j.description,
-      clientName: j.client_name,
-      clientLookingFor: j.client_looking_for
-    }));
-    try {
-      analysis = await analyzeCvAutoMatch(options, parts);
-    } catch (err: any) {
-      return res.status(502).json({ error: err.message });
-    }
-    matchedJobId = analysis.jobId || null;
-  } else {
-    try {
-      analysis = await analyzeCv(
-        {
-          jobNumber: row.job_number, title: row.job_title, keywords: row.job_keywords,
-          description: row.job_description, clientName: row.client_name,
-          clientLookingFor: row.client_looking_for
-        },
-        parts
-      );
-    } catch (err: any) {
-      return res.status(502).json({ error: err.message });
-    }
+  // Job assignment and role classification are recruiter-owned, even when an
+  // older frontend still sends autoMatch: true.
+  try {
+    analysis = await analyzeCv({
+      jobNumber: row.job_number, title: row.job_title, keywords: row.job_keywords,
+      description: row.job_description, clientName: row.client_name,
+      clientLookingFor: row.client_looking_for
+    }, parts);
+  } catch (err: any) {
+    return res.status(502).json({ error: err.message });
   }
   const sets = ['ai = $1', 'analyzed_at = now()'];
   const values: unknown[] = [analysis];
-  if (matchedJobId) {
-    values.push(Number(matchedJobId));
-    sets.push(`job_id = $${values.length}`);
-  }
-  // Classify the candidate by what they actually are, so a bulk-imported CV
-  // isn't left blank on the board when no job was assigned.
-  if (analysis.profession && !String(row.role ?? '').trim()) {
-    values.push(analysis.profession);
-    sets.push(`role = $${values.length}`);
-  }
   values.push(req.params.id);
   const updated = await pool.query(
     `UPDATE applications SET ${sets.join(', ')} WHERE id = $${values.length} RETURNING id`,

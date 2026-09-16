@@ -20,7 +20,7 @@ app.use(cors({ origin: process.env.FRONTEND_URL ?? '*' }));
 // 25mb to accommodate base64-encoded CV uploads on the analyze endpoint.
 app.use(express.json({ limit: '25mb' }));
 
-app.get('/health', (_req, res) => res.json({ status: 'ok' }));
+app.get('/health', (_req, res) => res.json({ status: 'ok', release: '2026-09-16-history-flow', historyVersion: 2, manualClassification: true }));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/candidates', candidateRoutes);
