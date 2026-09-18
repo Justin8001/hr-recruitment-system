@@ -1,0 +1,12 @@
+const fs=require('node:fs'),path=require('node:path');
+const root=path.join(__dirname,'..'),output=path.join(root,fs.existsSync(path.join(root,'frontend'))?'frontend':'web');
+fs.mkdirSync(output,{recursive:true});
+let html=fs.readFileSync(path.join(root,'index.html'),'utf8');
+const match=html.match(/<script>([\s\S]*)<\/script>/);
+if(!match)throw Error('Main script missing');
+fs.writeFileSync(path.join(output,'app.js'),match[1]);
+html=html.replace(match[0],'<script src="app.js"></script>');
+if(/\son(?:click|change|input|keydown|submit)=/.test(html))throw Error('Inline handler remains');
+fs.writeFileSync(path.join(output,'index.html'),html);
+for(const name of ['config.js','logo.png','_headers','_redirects'])fs.copyFileSync(path.join(root,name),path.join(output,name));
+console.log('Static site prepared in web/ with external scripts and strict CSP');

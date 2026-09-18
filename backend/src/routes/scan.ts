@@ -72,23 +72,23 @@ router.post('/', asyncHandler(async (req, res) => {
         );
         if (upd.rowCount) continue;
 
-        // New message: reuse an existing person (dedup by email) or create one,
-        // then record the inbound email as an application. ON CONFLICT guards
-        // against a concurrent scan inserting the same ext_key.
-        const person = await findOrCreatePerson(pool, { name: m.name, email: m.email });
-        const ins = await pool.query(
-          `INSERT INTO applications
-             (person_id, source, ext_key, subject, snippet, email_date, link,
-              provider_message_id, has_attachment)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-           ON CONFLICT (ext_key) DO NOTHING`,
-          [person.id, source, m.extKey, m.subject, m.snippet, m.date || null, m.link,
-           m.providerMessageId, m.hasAttachment]
-        );
-        added += ins.rowCount ?? 0;
+        const client=await pool.connect();
+        try {
+          await client.query('BEGIN');
+          await client.query('SELECT pg_advisory_xact_lock(726451, 1)');
+          if((await client.query('SELECT 1 FROM applications WHERE ext_key=$1',[m.extKey])).rowCount) {
+            await client.query('ROLLBACK');continue;
+          }
+          const person=await findOrCreatePerson(client,{name:m.name,email:m.email});
+          const ins=await client.query(`INSERT INTO applications
+            (person_id,source,ext_key,subject,snippet,email_date,link,provider_message_id,has_attachment)
+            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(ext_key) DO NOTHING`,
+            [person.id,source,m.extKey,m.subject,m.snippet,m.date||null,m.link,m.providerMessageId,m.hasAttachment]);
+          await client.query('COMMIT');added+=ins.rowCount??0;
+        } catch(err) {await client.query('ROLLBACK');throw err;} finally {client.release();}
       }
     } catch (err: any) {
-      errors.push(`${conn.provider}: ${err.message}`);
+      errors.push(`${conn.provider}: הסריקה נכשלה. יש לבדוק את החיבור ולהריץ שוב.`);
     }
   }
 

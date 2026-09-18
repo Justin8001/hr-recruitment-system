@@ -1,3 +1,4 @@
+import { requireAuth } from '../middleware/auth.js';
 import { Router } from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
@@ -14,6 +15,7 @@ const LOCKOUT_MS = 15 * 60 * 1000; // 15 minutes
 interface AttemptRecord {
   failures: number;
   lockedUntil: number | null;
+  lastAttempt: number;
 }
 
 const loginAttempts = new Map<string, AttemptRecord>();
@@ -22,7 +24,7 @@ const loginAttempts = new Map<string, AttemptRecord>();
 setInterval(() => {
   const now = Date.now();
   for (const [key, rec] of loginAttempts) {
-    if (rec.lockedUntil !== null && rec.lockedUntil < now) loginAttempts.delete(key);
+    if ((rec.lockedUntil ?? rec.lastAttempt + LOCKOUT_MS) < now) loginAttempts.delete(key);
   }
 }, 60 * 1000).unref();
 
@@ -32,7 +34,7 @@ function attemptKey(ip: string | undefined, username: string) {
 
 router.post('/login', asyncHandler(async (req, res) => {
   const { username, password } = req.body ?? {};
-  if (!username || !password) {
+  if (typeof username !== 'string' || typeof password !== 'string' || !username || !password || username.length>50 || password.length>200) {
     return res.status(400).json({ error: 'נדרשים שם משתמש וסיסמה' });
   }
 
@@ -51,7 +53,8 @@ router.post('/login', asyncHandler(async (req, res) => {
   );
   const user = result.rows[0];
   if (!user || !(await bcrypt.compare(password, user.password_hash))) {
-    const rec = loginAttempts.get(key) ?? { failures: 0, lockedUntil: null };
+    const rec = loginAttempts.get(key) ?? { failures: 0, lockedUntil: null, lastAttempt: Date.now() };
+    rec.lastAttempt=Date.now();
     rec.failures += 1;
     if (rec.failures >= MAX_FAILED_ATTEMPTS) {
       rec.lockedUntil = Date.now() + LOCKOUT_MS;
@@ -66,12 +69,15 @@ router.post('/login', asyncHandler(async (req, res) => {
   await pool.query('UPDATE users SET last_login = now() WHERE id = $1', [user.id]);
 
   const token = jwt.sign(
-    { userId: user.id, username: user.username, role: user.role },
+    { purpose:'session', userId: user.id, username: user.username, role: user.role },
     process.env.JWT_SECRET as string,
     { expiresIn: '8h' }
   );
 
-  res.json({ token, user: { id: user.id, username: user.username, role: user.role } });
+  res.cookie('hbc_session',token,{httpOnly:true,secure:process.env.NODE_ENV==='production',sameSite:'lax',path:'/api',maxAge:8*60*60*1000});
+  res.json({ user: { id: user.id, username: user.username, role: user.role } });
 }));
 
+router.get('/me',requireAuth,(req,res)=>res.json({user:{id:req.user!.userId,username:req.user!.username,role:req.user!.role}}));
+router.post('/logout',(_req,res)=>{res.clearCookie('hbc_session',{path:'/api',httpOnly:true,secure:process.env.NODE_ENV==='production',sameSite:'lax'});res.status(204).end();});
 export default router;

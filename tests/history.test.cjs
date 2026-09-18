@@ -21,5 +21,14 @@ assert.equal(saved.events.at(-1).notesBefore, 'original notes');
 assert.equal(saved.events.at(-1).notesAfter, 'new notes');
 const retried = appendHistory({...current,notes:second}, {notes:second}, 'other-user');
 assert.equal(readNotes(retried).events.length, saved.events.length);
-assert.throws(()=>readNotes('<!--HBC_EVENTS_V1:bm90LWpzb24=-->'));
+assert.equal(readNotes('<!--HBC_EVENTS_V1:bm90LWpzb24=-->').warnings.length,1);
+assert.equal(history.events[0].date,null);
+assert.equal(history.events[1].jobId,'2');
 console.log('append-only history, old job snapshots, note revisions and retry tests: OK');
+
+const corrupt='original<!--HBC_EVENTS_V1:broken';
+const preserved=appendHistory({...original,notes:corrupt},{notes:'changed'},'test');
+assert.ok(readNotes(preserved).text.includes('<!--HBC_EVENTS_V1:broken'));
+assert.ok(readNotes(preserved).events.length>=1);
+const block=composeNotes('',[{id:'x',type:'phone'}]);
+assert.equal(readNotes(block+'\n'+block).events.length,1);

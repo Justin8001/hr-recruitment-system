@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import jwt from 'jsonwebtoken';
+import { randomUUID } from 'node:crypto';
 import { pool } from '../db/pool.js';
 import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
@@ -9,7 +10,7 @@ import { encrypt } from '../lib/crypto.js';
 const router = Router();
 
 function frontendBase() {
-  return (process.env.FRONTEND_URL ?? '*').replace(/\/+$/, '');
+  return (process.env.FRONTEND_URL ?? '').replace(/\/+$/, '');
 }
 
 // Step 1 (authenticated): return the provider's authorization URL.
@@ -21,8 +22,11 @@ router.get('/:provider/start', requireAuth, asyncHandler(async (req, res) => {
   if (!provider.isConfigured()) {
     return res.status(400).json({ error: 'הספק לא הוגדר בשרת (חסרים משתני סביבה)' });
   }
+  const nonce=randomUUID();
+  await pool.query('DELETE FROM oauth_states WHERE expires_at < now()');
+  await pool.query(`INSERT INTO oauth_states(nonce,user_id,provider,expires_at) VALUES($1,$2,$3,now()+interval '10 minutes')`,[nonce,req.user!.userId,name]);
   const state = jwt.sign(
-    { userId: req.user!.userId, provider: name },
+    { purpose:'oauth-state', nonce, userId: req.user!.userId, provider: name },
     process.env.JWT_SECRET as string,
     { expiresIn: '10m' }
   );
@@ -49,8 +53,10 @@ router.get('/:provider/callback', asyncHandler(async (req, res) => {
   } catch {
     return redirectErr('invalid_state');
   }
-  if (payload.provider !== name) return redirectErr('state_mismatch');
+  if (payload.purpose!=='oauth-state'||payload.provider !== name) return redirectErr('state_mismatch');
 
+  const consumed=await pool.query('DELETE FROM oauth_states WHERE nonce=$1 AND user_id=$2 AND provider=$3 AND expires_at>now() RETURNING nonce',[payload.nonce,payload.userId,name]);
+  if(!consumed.rowCount)return redirectErr('expired_or_used_state');
   try {
     const tokens = await provider.exchangeCode(code);
     if (!tokens.refreshToken) {
@@ -79,7 +85,7 @@ router.get('/:provider/callback', asyncHandler(async (req, res) => {
     );
     res.redirect(`${frontendBase()}/?connected=${name}`);
   } catch (err: any) {
-    console.error('OAuth callback failed:', err);
+    console.error('OAuth callback failed');
     redirectErr('connection_failed');
   }
 }));

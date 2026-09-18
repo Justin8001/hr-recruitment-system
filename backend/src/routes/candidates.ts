@@ -2,13 +2,15 @@ import { Router } from 'express';
 import { pool } from '../db/pool.js';
 import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { findOrCreatePerson, findPerson, normalizeEmail, normalizePhone } from '../lib/people.js';
+import { findOrCreatePerson, findPerson, normalizeEmail, normalizePhone, lockPeople, preferredName } from '../lib/people.js';
 import { getProvider } from '../providers/index.js';
 import { encrypt, decrypt } from '../lib/crypto.js';
 import { prepareCvParts, type GeminiPart } from '../lib/cv.js';
 import { analyzeCv, draftLetter, isConfigured as geminiConfigured } from '../lib/gemini.js';
 import type { CvAttachment } from '../providers/types.js';
-import { appendHistory } from '../lib/history.js';
+import { HttpError } from '../lib/errors.js';
+import { validateInput } from '../middleware/validation.js';
+import { appendHistory, readNotes } from '../lib/history.js';
 
 const router = Router();
 
@@ -27,7 +29,7 @@ const REJECTED_BY = ['us', 'client'];
 // (and optionally its job). The flat shape keeps the existing board working.
 const SELECT_CANDIDATE =
   `SELECT a.*, p.name, p.email, p.phone, p.referral,
-          p.region, p.city, p.national_id, p.do_not_rehire, p.do_not_rehire_reason,
+          p.version AS person_version, p.region, p.city, p.national_id, p.do_not_rehire, p.do_not_rehire_reason,
           j.job_number, j.title AS job_title, j.track AS job_track,
           j.client_id, cl.name AS client_name
    FROM applications a
@@ -39,6 +41,8 @@ function rowToCandidate(r: any) {
   return {
     id: String(r.id),
     personId: String(r.person_id),
+    version: String(r.version), personVersion: String(r.person_version),
+    historyWarnings: readNotes(r.notes).warnings,
     key: r.ext_key,
     source: r.source,
     name: r.name,
@@ -87,6 +91,8 @@ function rowToCandidate(r: any) {
 }
 
 router.use(requireAuth);
+router.use(validateInput);
+router.param('id', (req, res, next) => validateInput(req, res, next));
 
 router.get('/', asyncHandler(async (_req, res) => {
   const result = await pool.query(`${SELECT_CANDIDATE} ORDER BY a.added_at DESC`);
@@ -96,64 +102,32 @@ router.get('/', asyncHandler(async (_req, res) => {
 // The AI already extracted the candidate's real name/email/phone and we stored
 // it inside the analysis. When the rename right after import didn't stick, that
 // data is still there — so names can be repaired from it without re-uploading.
-const REPAIRABLE =
-  `COALESCE(a.ai->>'candidateName', '') <> ''
-   AND p.name IS DISTINCT FROM a.ai->>'candidateName'`;
-
-router.get('/repairable-names', asyncHandler(async (_req, res) => {
-  const result = await pool.query(
-    `SELECT p.name AS current_name, a.ai->>'candidateName' AS ai_name
-     FROM applications a JOIN people p ON p.id = a.person_id
-     WHERE ${REPAIRABLE}
-     ORDER BY a.added_at DESC`
-  );
-  res.json({
-    count: result.rows.length,
-    samples: result.rows.slice(0, 8).map(r => ({ from: r.current_name, to: r.ai_name }))
-  });
+const REPAIR_QUERY = `SELECT DISTINCT ON (p.id) p.*, a.ai, a.analyzed_at
+  FROM people p JOIN applications a ON a.person_id=p.id
+  WHERE COALESCE(a.ai->>'candidateName','') <> ''
+  ORDER BY p.id, (a.ai->>'candidateName' ~ '[א-ת]') DESC, a.analyzed_at DESC NULLS LAST, a.id DESC`;
+router.get('/repairable-names', asyncHandler(async (_req,res) => {
+  const rows=(await pool.query(REPAIR_QUERY)).rows;
+  const changes=rows.map(p=>({from:p.name,to:preferredName([p.ai.candidateName,p.name])}))
+    .map(c => /[א-ת]/.test(c.from) ? {...c,to:c.from} : c).filter(c=>c.from!==c.to);
+  res.json({count:changes.length,samples:changes.slice(0,8)});
 }));
-
-router.post('/repair-names', asyncHandler(async (_req, res) => {
-  const client = await pool.connect();
+router.post('/repair-names', asyncHandler(async (_req,res) => {
+  const client=await pool.connect(); let renamed=0;
   try {
-    await client.query('BEGIN');
-    const renamed = await client.query(
-      `UPDATE people p
-       SET name = a.ai->>'candidateName'
-       FROM applications a
-       WHERE a.person_id = p.id AND ${REPAIRABLE}
-       RETURNING p.id`
-    );
-    // Backfill contact details only where the person has none and the value
-    // isn't already taken — the email column is unique.
-    await client.query(
-      `UPDATE people p
-       SET email = lower(a.ai->>'candidateEmail')
-       FROM applications a
-       WHERE a.person_id = p.id
-         AND p.email IS NULL
-         AND COALESCE(a.ai->>'candidateEmail', '') <> ''
-         AND NOT EXISTS (
-           SELECT 1 FROM people p2
-           WHERE lower(p2.email) = lower(a.ai->>'candidateEmail') AND p2.id <> p.id
-         )`
-    );
-    await client.query(
-      `UPDATE people p
-       SET phone = a.ai->>'candidatePhone'
-       FROM applications a
-       WHERE a.person_id = p.id
-         AND p.phone IS NULL
-         AND COALESCE(a.ai->>'candidatePhone', '') <> ''`
-    );
-    await client.query('COMMIT');
-    res.json({ renamed: renamed.rowCount ?? 0 });
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
+    await client.query('BEGIN'); await lockPeople(client);
+    const rows=(await client.query(REPAIR_QUERY)).rows;
+    for(const p of rows) {
+      const name=/[א-ת]/.test(p.name) ? p.name : preferredName([p.ai.candidateName,p.name]);
+      const email=normalizeEmail(p.ai.candidateEmail), phone=normalizePhone(p.ai.candidatePhone);
+      const emailFree=!email || !(await client.query('SELECT 1 FROM people WHERE lower(email)=$1 AND id<>$2',[email,p.id])).rowCount;
+      const phoneFree=!phone || !(await client.query('SELECT 1 FROM people WHERE phone=$1 AND id<>$2',[phone,p.id])).rowCount;
+      await client.query(`UPDATE people SET name=$2, email=COALESCE(NULLIF(email,''),$3), phone=COALESCE(NULLIF(phone,''),$4) WHERE id=$1`,
+        [p.id,name,emailFree?email:null,phoneFree?phone:null]);
+      if(name!==p.name) renamed++;
+    }
+    await client.query('COMMIT'); res.json({renamed});
+  } catch(err) {await client.query('ROLLBACK'); throw err;} finally {client.release();}
 }));
 
 router.post('/', asyncHandler(async (req, res) => {
@@ -161,21 +135,25 @@ router.post('/', asyncHandler(async (req, res) => {
   if (!name || !String(name).trim()) {
     return res.status(400).json({ error: 'נא להזין שם' });
   }
-  const finalStage = STAGES.includes(stage) ? stage : 'applied';
+  if(stage!==undefined&&!STAGES.includes(stage)) throw new HttpError(400,'INVALID_STAGE','שלב לא תקין');
+  if(req.body.rejectedBy && !REJECTED_BY.includes(req.body.rejectedBy)) throw new HttpError(400,'INVALID_REJECTED_BY','ערך נפסל על ידי לא תקין');
+  const finalStage = stage || 'applied';
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    await lockPeople(client);
 
     let person;
     if (personId) {
       // Caller confirmed this is an existing person: add another application to them.
-      const r = await client.query('SELECT * FROM people WHERE id = $1', [personId]);
+      const r = await client.query('SELECT * FROM people WHERE id = $1 FOR UPDATE', [personId]);
       if (!r.rows[0]) {
         await client.query('ROLLBACK');
         return res.status(404).json({ error: 'מועמד לא נמצא' });
       }
       person = r.rows[0];
+      if (String(req.body.expectedPersonVersion || '') !== String(person.version)) throw new HttpError(409, 'PERSON_CHANGED', 'פרטי האדם עודכנו. יש לרענן לפני הוספת הגשה.');
     } else {
       // Dedup: if someone already matches this email/phone, surface them instead
       // of silently creating a duplicate person.
@@ -189,7 +167,7 @@ router.post('/', asyncHandler(async (req, res) => {
         return res.status(409).json({
           error: 'מועמד קיים',
           duplicate: {
-            person: { id: String(dup.id), name: dup.name, email: dup.email ?? '', phone: dup.phone ?? '' },
+            person: { id: String(dup.id), name: dup.name, version: String(dup.version), email: dup.email ?? '', phone: dup.phone ?? '' },
             applications: apps.rows.map(rowToCandidate)
           }
         });
@@ -198,15 +176,6 @@ router.post('/', asyncHandler(async (req, res) => {
     }
 
     const b = req.body ?? {};
-    if (b.region || b.city || b.nationalId) {
-      await client.query(
-        `UPDATE people SET region = COALESCE($2, region), city = COALESCE($3, city),
-                           national_id = COALESCE($4, national_id)
-         WHERE id = $1`,
-        [person.id, b.region || null, b.city || null, b.nationalId || null]
-      );
-    }
-
     const salary = Number(b.salaryExpectation);
     const inserted = await client.query(
       `INSERT INTO applications
@@ -222,7 +191,21 @@ router.post('/', asyncHandler(async (req, res) => {
         b.summaryText || null, b.contactedAt || null, b.outcomeStatus || null
       ]
     );
-    const result = await client.query(`${SELECT_CANDIDATE} WHERE a.id = $1`, [inserted.rows[0].id]);
+    const id = inserted.rows[0].id;
+    const appCols: Record<string, string> = {interviewedTeams:'interviewed_teams', gotTask:'got_task',
+      sentToClient:'sent_to_client', clientApproved:'client_approved', rejectionReason:'rejection_reason',
+      rejectedBy:'rejected_by', rejectionLetterSent:'rejection_letter_sent'};
+    const extra = Object.entries(appCols).filter(([key]) => b[key] !== undefined);
+    if (extra.length) await client.query(`UPDATE applications SET ${extra.map(([,col],i) => `${col} = $${i+2}`).join(', ')} WHERE id = $1`,
+      [id, ...extra.map(([key]) => b[key] === '' ? null : b[key])]);
+    const personCols: Record<string,string> = {name:'name', email:'email', phone:'phone', referral:'referral', region:'region', city:'city', nationalId:'national_id', doNotRehire:'do_not_rehire', doNotRehireReason:'do_not_rehire_reason'};
+    const pe = Object.entries(personCols).filter(([key,col]) => b[key] !== undefined && (!personId || !person[col]));
+    if (pe.length) await client.query(`UPDATE people SET ${pe.map(([,col],i) => `${col} = $${i+2}`).join(', ')} WHERE id = $1`,
+      [person.id, ...pe.map(([key]) => key === 'email' ? normalizeEmail(b[key]) : key === 'phone' ? normalizePhone(b[key]) : b[key])]);
+    const initial = rowToCandidate((await client.query(`${SELECT_CANDIDATE} WHERE a.id = $1`, [id])).rows[0]);
+    const notesWithHistory = appendHistory({...initial, notes: '', id}, {notes: b.notes || ''}, req.user!.username);
+    await client.query('UPDATE applications SET notes = $2 WHERE id = $1', [id, notesWithHistory]);
+    const result = await client.query(`${SELECT_CANDIDATE} WHERE a.id = $1`, [id]);
     await client.query('COMMIT');
     res.status(201).json(rowToCandidate(result.rows[0]));
   } catch (err) {
@@ -245,14 +228,19 @@ router.patch('/:id', asyncHandler(async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    await lockPeople(client);
 
-    const cur = await client.query(`${SELECT_CANDIDATE} WHERE a.id = $1 FOR UPDATE OF a`, [req.params.id]);
+    const cur = await client.query(`${SELECT_CANDIDATE} WHERE a.id = $1 FOR UPDATE OF a, p`, [req.params.id]);
     if (!cur.rows[0]) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'מועמד לא נמצא' });
     }
     const personId = cur.rows[0].person_id;
     const current = rowToCandidate(cur.rows[0]);
+    if (b.expectedVersion === undefined || b.expectedPersonVersion === undefined)
+      throw new HttpError(428, 'VERSION_REQUIRED', 'יש לרענן את האתר לפני השמירה.');
+    if (String(b.expectedVersion) !== current.version || String(b.expectedPersonVersion) !== current.personVersion)
+      throw new HttpError(409, 'RECORD_CHANGED', 'הכרטיס או פרטי האדם עודכנו מאז הפתיחה. יש להעתיק את השינויים ולרענן.');
     if (b.jobId !== undefined && String(b.jobId || '') !== current.jobId) {
       const job = b.jobId ? (await client.query(
         'SELECT j.title, j.client_id, c.name AS client_name FROM jobs j LEFT JOIN clients c ON c.id = j.client_id WHERE j.id = $1', [b.jobId]
@@ -306,6 +294,11 @@ router.patch('/:id', asyncHandler(async (req, res) => {
       );
     }
 
+    // Contact changes obey the same serialized identity checks as creation.
+    if(b.email!==undefined || b.phone!==undefined) {
+      const match=await findPerson(client,normalizeEmail(b.email===undefined?current.email:b.email),normalizePhone(b.phone===undefined?current.phone:b.phone));
+      if(match && String(match.id)!==String(personId)) throw new HttpError(409,'DUPLICATE_CONTACT','פרטי הקשר שייכים לאדם אחר. יש לאחד כפילויות במקום לדרוס.');
+    }
     // Person-level fields.
     const pFields: string[] = [];
     const pValues: unknown[] = [];
@@ -396,7 +389,7 @@ router.post('/:id/analyze', asyncHandler(async (req, res) => {
         );
         file = await provider.downloadCvAttachment(tokens.accessToken, row.provider_message_id);
       } catch (err: any) {
-        return res.status(502).json({ error: `שגיאה בהורדת הקו"ח מהמייל: ${err.message}` });
+        return res.status(502).json({ error: 'שגיאה בהורדת קורות החיים. יש לבדוק את חיבור המייל.' });
       }
     }
   }
@@ -434,7 +427,7 @@ router.post('/:id/analyze', asyncHandler(async (req, res) => {
       clientLookingFor: row.client_looking_for
     }, parts);
   } catch (err: any) {
-    return res.status(502).json({ error: err.message });
+    return res.status(502).json({ error: 'שירות הניתוח אינו זמין כרגע. יש לבדוק את הגדרת השירות ולנסות שוב.' });
   }
   const sets = ['ai = $1', 'analyzed_at = now()'];
   const values: unknown[] = [analysis];
@@ -474,7 +467,7 @@ router.post('/:id/letter', asyncHandler(async (req, res) => {
     });
     res.json({ text });
   } catch (err: any) {
-    res.status(502).json({ error: err.message });
+    res.status(502).json({ error: 'שירות הניסוח אינו זמין כרגע.' });
   }
 }));
 

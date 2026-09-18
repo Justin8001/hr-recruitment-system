@@ -1,6 +1,7 @@
 # Backend container for Render (Docker runtime)
-FROM node:20-slim
+FROM node:22-slim
 
+ENV NODE_ENV=production
 WORKDIR /app
 
 # Install dependencies (including devDependencies — tsc/tsx are needed to build)

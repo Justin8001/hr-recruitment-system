@@ -1,3 +1,4 @@
+import { validateInput } from '../middleware/validation.js';
 import { Router } from 'express';
 import { pool } from '../db/pool.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -28,6 +29,8 @@ const COLS: Record<string, string> = {
 };
 
 router.use(requireAuth);
+router.use(validateInput);
+router.param('id', (req,res,next)=>validateInput(req,res,next));
 
 router.get('/', asyncHandler(async (_req, res) => {
   const result = await pool.query('SELECT * FROM clients ORDER BY name ASC');

@@ -1,7 +1,3 @@
-# Netlify deploy config. The frontend is a static, no-build site living in the
-# frontend/ subdirectory, so we just point Netlify's publish directory at it.
-# With the site linked to this GitHub repo, every push to main auto-deploys.
-
 [build]
-  publish = "frontend"
-  command = ""
+command = "node scripts/build-site.cjs"
+publish = "frontend"

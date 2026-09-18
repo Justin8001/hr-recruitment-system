@@ -12,43 +12,29 @@ import { pool } from './pool.js';
  * alone — there is no separate schema.sql to apply manually.
  */
 export async function runMigrations(): Promise<void> {
-  const dir = path.join(process.cwd(), 'src', 'db', 'migrations');
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS schema_migrations (
-      name TEXT PRIMARY KEY,
-      applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
-    )
-  `);
-
-  let files: string[];
+  // Both src/db and dist/db resolve to the deployed backend/src/db/migrations.
+  const dir = path.resolve(__dirname, '../../src/db/migrations');
+  const files = (await readdir(dir)).filter(f => f.endsWith('.sql')).sort();
+  if (!files.length) throw new Error('No migration files found');
+  const client = await pool.connect();
   try {
-    files = (await readdir(dir)).filter((f) => f.endsWith('.sql')).sort();
-  } catch {
-    console.warn(`Migrations directory not found at ${dir} — skipping migrations.`);
-    return;
-  }
-
-  const applied = new Set(
-    (await pool.query('SELECT name FROM schema_migrations')).rows.map((r) => r.name)
-  );
-
-  for (const file of files) {
-    if (applied.has(file)) continue;
-    const sql = await readFile(path.join(dir, file), 'utf8');
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      await client.query(sql);
-      await client.query('INSERT INTO schema_migrations (name) VALUES ($1)', [file]);
-      await client.query('COMMIT');
-      console.log(`migration applied: ${file}`);
-    } catch (err) {
-      await client.query('ROLLBACK');
-      console.error(`migration FAILED: ${file}`);
-      throw err;
-    } finally {
-      client.release();
+    await client.query('SELECT pg_advisory_lock(726451, 2)');
+    await client.query(`CREATE TABLE IF NOT EXISTS schema_migrations
+      (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())`);
+    const applied = new Set((await client.query('SELECT name FROM schema_migrations')).rows.map(r => r.name));
+    for (const file of files) {
+      if (applied.has(file)) continue;
+      const sql = await readFile(path.join(dir, file), 'utf8');
+      try {
+        await client.query('BEGIN');
+        await client.query(sql);
+        await client.query('INSERT INTO schema_migrations (name) VALUES ($1)', [file]);
+        await client.query('COMMIT');
+        console.log(`migration applied: ${file}`);
+      } catch (err) { await client.query('ROLLBACK'); throw err; }
     }
+  } finally {
+    try { await client.query('SELECT pg_advisory_unlock(726451, 2)'); }
+    finally { client.release(); }
   }
 }

@@ -1,3 +1,4 @@
+import { validateInput } from '../middleware/validation.js';
 import { Router } from 'express';
 import { pool } from '../db/pool.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -65,6 +66,8 @@ const SELECT_WITH_CLIENT =
    FROM jobs j LEFT JOIN clients c ON c.id = j.client_id`;
 
 router.use(requireAuth);
+router.use(validateInput);
+router.param('id', (req,res,next)=>validateInput(req,res,next));
 
 router.get('/', asyncHandler(async (_req, res) => {
   const result = await pool.query(`${SELECT_WITH_CLIENT} ORDER BY j.created_at DESC`);
@@ -171,7 +174,7 @@ router.post('/:id/match', asyncHandler(async (req, res) => {
             a.summary_text, a.notes,
             p.name, p.region, p.city, p.do_not_rehire
      FROM applications a JOIN people p ON p.id = a.person_id
-     ORDER BY a.person_id, (a.ai IS NOT NULL) DESC, a.added_at DESC`
+     ORDER BY a.person_id, (a.job_id = $1) DESC NULLS LAST, (a.ai IS NOT NULL) DESC, a.added_at DESC, a.id DESC`, [req.params.id]
   );
 
   const pool_ = cr.rows.map(r => ({
@@ -187,7 +190,9 @@ router.post('/:id/match', asyncHandler(async (req, res) => {
   }));
   const byId = new Map(cr.rows.map(r => [String(r.id), r]));
 
-  const ranked = rankCandidates(job as any, pool_).slice(0, Number(req.body?.limit) || 25);
+  const requested=Number(req.body?.limit ?? 25);
+  if(!Number.isInteger(requested)||requested<1||requested>100) return res.status(400).json({code:'INVALID_LIMIT',error:'מספר התוצאות חייב להיות בין 1 ל-100'});
+  const ranked = rankCandidates(job as any, pool_).slice(0, requested);
   res.json({
     job: { id: job.id, jobNumber: job.jobNumber, title: job.title, clientName: job.clientName },
     results: ranked.map(m => {
